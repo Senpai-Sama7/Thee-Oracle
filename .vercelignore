@@ -93,11 +93,4 @@ flask_security_audit.json
 demo_output.md
 *.out
 
-# Exclude everything except essential files
-*
-!api/
-!vercel.json
-!vercel_requirements.txt
-!README.md
-!LICENSE
-!.gitignore
+# Note: Removed catch-all pattern to ensure api/ directory is included
