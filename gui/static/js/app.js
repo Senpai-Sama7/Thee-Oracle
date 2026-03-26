@@ -456,10 +456,22 @@ class OracleGUI {
             this.pushActivity('History cleared', 'Session transcript reset.', 'system');
         });
 
-        this.socket.on('error', (payload) => {
+        this.socket.on('agent_error', (payload) => {
             this.isThinking = false;
+            this.pendingStartedAt = null;
             this.hideLoading();
             this.showToast(payload?.message || 'An error occurred.', 'error');
+            this.pushActivity('Oracle error', payload?.message || 'An error occurred.', 'alert');
+            this.recordFailure();
+            this.updateSendButton();
+        });
+
+        this.socket.on('error', (payload) => {
+            this.isThinking = false;
+            this.pendingStartedAt = null;
+            this.hideLoading();
+            this.showToast(payload?.message || 'A transport error occurred.', 'error');
+            this.pushActivity('Transport error', payload?.message || 'A transport error occurred.', 'alert');
             this.recordFailure();
             this.updateSendButton();
         });
@@ -776,7 +788,9 @@ class OracleGUI {
 
             this.pushActivity('Response received', 'Oracle returned an assistant turn over HTTP.', 'assistant');
         } catch (error) {
+            this.pendingStartedAt = null;
             this.showToast(error.message || 'Failed to send message.', 'error');
+            this.pushActivity('Oracle error', error.message || 'Failed to send message.', 'alert');
             this.recordFailure();
         } finally {
             this.isThinking = false;

@@ -284,7 +284,10 @@ def initialize_agent() -> bool:
                 for line in f:
                     if line.strip() and not line.startswith("#") and "=" in line:
                         key, value = line.strip().split("=", 1)
-                        os.environ[key] = value
+                        cleaned = value.strip()
+                        if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"'}:
+                            cleaned = cleaned[1:-1].strip()
+                        os.environ[key] = cleaned
 
         app_state.agent_config = OracleConfig()
         app_state.agent = OracleAgent(app_state.agent_config)
@@ -305,6 +308,11 @@ def get_skill_catalog() -> list[dict[str, Any]]:
     except Exception as exc:
         logger.warning("Unable to read skill catalog: %s", exc)
         return []
+
+
+def emit_gui_error(message: str) -> None:
+    payload = {"message": message}
+    emit("agent_error", payload)
 
 
 def sanitize_skill_catalog(catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -903,31 +911,31 @@ def handle_disconnect():
 def handle_message(data):
     """Handle incoming chat message from client."""
     if not socket_request_authorized():
-        emit("error", {"message": "Unauthorized"})
+        emit_gui_error("Unauthorized")
         return
 
     if not app_state.agent:
-        emit("error", {"message": "Oracle Agent not initialized"})
+        emit_gui_error("Oracle Agent not initialized")
         return
 
     try:
         if not isinstance(data, dict):
-            emit("error", {"message": "Invalid message payload"})
+            emit_gui_error("Invalid message payload")
             return
 
         prompt = data.get("message", "")
         session_id = normalize_session_id(data.get("session_id", "default"))
 
         if not isinstance(prompt, str):
-            emit("error", {"message": "Message must be a string"})
+            emit_gui_error("Message must be a string")
             return
         prompt = prompt.strip()
 
         if not prompt:
-            emit("error", {"message": "Empty message"})
+            emit_gui_error("Empty message")
             return
         if len(prompt) > MAX_GUI_MESSAGE_LENGTH:
-            emit("error", {"message": "Message exceeds GUI limit"})
+            emit_gui_error("Message exceeds GUI limit")
             return
 
         # Log the incoming message
@@ -953,33 +961,33 @@ def handle_message(data):
 
     except Exception as e:
         logger.error(f"Error processing message: {e}")
-        emit("error", {"message": str(e)})
+        emit_gui_error(str(e))
 
 
 @socketio.on("execute_tool")
 def handle_tool_execution(data):
     """Handle direct tool execution from GUI."""
     if not socket_request_authorized():
-        emit("error", {"message": "Unauthorized"})
+        emit_gui_error("Unauthorized")
         return
 
     if not app_state.agent:
-        emit("error", {"message": "Agent not initialized"})
+        emit_gui_error("Agent not initialized")
         return
 
     try:
         if not isinstance(data, dict):
-            emit("error", {"message": "Invalid tool payload"})
+            emit_gui_error("Invalid tool payload")
             return
 
         tool_name = data.get("tool")
         args = data.get("args", {})
 
         if not isinstance(tool_name, str) or tool_name not in GUI_ALLOWED_DIRECT_TOOLS:
-            emit("error", {"message": "Unsupported tool"})
+            emit_gui_error("Unsupported tool")
             return
         if not isinstance(args, dict):
-            emit("error", {"message": "Tool arguments must be an object"})
+            emit_gui_error("Tool arguments must be an object")
             return
 
         emit("tool_executing", {"tool": tool_name, "args": args})
@@ -990,36 +998,36 @@ def handle_tool_execution(data):
         emit("tool_result", {"tool": tool_name, "result": result, "timestamp": datetime.now().isoformat()})
 
     except Exception as e:
-        emit("error", {"message": f"Tool execution failed: {str(e)}"})
+        emit_gui_error(f"Tool execution failed: {str(e)}")
 
 
 @socketio.on("backup_to_gcs")
 def handle_backup():
     """Trigger GCS backup."""
     if not socket_request_authorized():
-        emit("error", {"message": "Unauthorized"})
+        emit_gui_error("Unauthorized")
         return
 
     if not app_state.agent:
-        emit("error", {"message": "Agent not initialized"})
+        emit_gui_error("Agent not initialized")
         return
 
     try:
         result = app_state.agent.backup_to_gcs()
         emit("backup_result", result)
     except Exception as e:
-        emit("error", {"message": f"Backup failed: {str(e)}"})
+        emit_gui_error(f"Backup failed: {str(e)}")
 
 
 @socketio.on("clear_history")
 def clear_history(data):
     """Clear conversation history for a session."""
     if not socket_request_authorized():
-        emit("error", {"message": "Unauthorized"})
+        emit_gui_error("Unauthorized")
         return
 
     if not isinstance(data, dict):
-        emit("error", {"message": "Invalid clear-history payload"})
+        emit_gui_error("Invalid clear-history payload")
         return
 
     session_id = normalize_session_id(data.get("session_id", "default"))
@@ -1029,7 +1037,13 @@ def clear_history(data):
             clear_session_history(session_id)
             emit("history_cleared", {"session_id": session_id})
         except Exception as e:
-            emit("error", {"message": f"Failed to clear history: {str(e)}"})
+            emit_gui_error(f"Failed to clear history: {str(e)}")
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Serve the GUI favicon to avoid browser 404 noise."""
+    return send_from_directory(app.static_folder, "favicon.svg", mimetype="image/svg+xml")
 
 
 @app.route("/static/<path:filename>")

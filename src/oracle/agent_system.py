@@ -81,6 +81,22 @@ logging.basicConfig(
 log = logging.getLogger("oracle")
 
 
+def _clean_env_string(value: str | None, default: str = "") -> str:
+    if value is None:
+        return default
+    cleaned = value.strip()
+    if len(cleaned) >= 2 and cleaned[0] == cleaned[-1] and cleaned[0] in {"'", '"'}:
+        cleaned = cleaned[1:-1].strip()
+    return cleaned or default
+
+
+def _get_api_key() -> str:
+    google_api_key = _clean_env_string(os.environ.get("GOOGLE_API_KEY"))
+    if google_api_key:
+        return google_api_key
+    return _clean_env_string(os.environ.get("GEMINI_API_KEY"))
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -95,31 +111,33 @@ class OracleConfig:
 
     def __init__(self) -> None:
         repo_root = Path(__file__).parent.parent.parent.resolve()
-        project_root_env = os.environ.get("ORACLE_PROJECT_ROOT")
+        project_root_env = _clean_env_string(os.environ.get("ORACLE_PROJECT_ROOT"))
         self.project_root = Path(project_root_env).expanduser().resolve() if project_root_env else repo_root
         # IMPORTANT: verify this model ID against the Vertex AI model garden
         # before running. Model preview strings rotate. As of March 2026,
         # gemini-2.0-flash-exp is a verified working endpoint.
-        self.model_id = os.environ.get("ORACLE_MODEL_ID", "gemini-2.0-flash-exp")
-        self.gcp_project = os.environ.get("GCP_PROJECT_ID", "")
-        self.gcp_location = os.environ.get("GCP_LOCATION", "us-central1")
-        self.shell_timeout = int(os.environ.get("ORACLE_SHELL_TIMEOUT", "60"))
-        self.http_timeout = int(os.environ.get("ORACLE_HTTP_TIMEOUT", "15"))
-        self.max_turns = int(os.environ.get("ORACLE_MAX_TURNS", "20"))
-        self.max_active_skills = int(os.environ.get("ORACLE_MAX_ACTIVE_SKILLS", "3"))
-        self.enable_skill_context = os.environ.get("ORACLE_ENABLE_SKILL_CONTEXT", "true").lower() == "true"
+        self.model_id = _clean_env_string(os.environ.get("ORACLE_MODEL_ID"), "gemini-2.0-flash-exp")
+        self.gcp_project = _clean_env_string(os.environ.get("GCP_PROJECT_ID"))
+        self.gcp_location = _clean_env_string(os.environ.get("GCP_LOCATION"), "us-central1")
+        self.shell_timeout = int(_clean_env_string(os.environ.get("ORACLE_SHELL_TIMEOUT"), "60"))
+        self.http_timeout = int(_clean_env_string(os.environ.get("ORACLE_HTTP_TIMEOUT"), "15"))
+        self.max_turns = int(_clean_env_string(os.environ.get("ORACLE_MAX_TURNS"), "20"))
+        self.max_active_skills = int(_clean_env_string(os.environ.get("ORACLE_MAX_ACTIVE_SKILLS"), "3"))
+        self.enable_skill_context = (
+            _clean_env_string(os.environ.get("ORACLE_ENABLE_SKILL_CONTEXT"), "true").lower() == "true"
+        )
         self.db_path = self._resolve_db_path()
         self.mcp_config_path = self._resolve_project_path(
-            os.environ.get("ORACLE_MCP_CONFIG", "config/mcp_servers.yaml")
+            _clean_env_string(os.environ.get("ORACLE_MCP_CONFIG"), "config/mcp_servers.yaml")
         )
-        self.mcp_timeout: int = int(os.environ.get("ORACLE_MCP_TIMEOUT", "30"))
-        self.skills_dir = self._resolve_project_path(os.environ.get("ORACLE_SKILLS_DIR", "skills/"))
+        self.mcp_timeout: int = int(_clean_env_string(os.environ.get("ORACLE_MCP_TIMEOUT"), "30"))
+        self.skills_dir = self._resolve_project_path(_clean_env_string(os.environ.get("ORACLE_SKILLS_DIR"), "skills/"))
 
         # Model Router configuration (Oracle 5.0 Phase 1)
         self.model_chain_config = self._resolve_project_path(
-            os.environ.get("ORACLE_MODEL_CHAIN_CONFIG", "config/model_chain.yaml")
+            _clean_env_string(os.environ.get("ORACLE_MODEL_CHAIN_CONFIG"), "config/model_chain.yaml")
         )
-        self.use_model_router: bool = os.environ.get("ORACLE_USE_MODEL_ROUTER", "false").lower() == "true"
+        self.use_model_router = _clean_env_string(os.environ.get("ORACLE_USE_MODEL_ROUTER"), "false").lower() == "true"
 
         if not self.gcp_project:
             log.warning("GCP_PROJECT_ID is not set. Vertex AI calls will fail.")
@@ -131,7 +149,7 @@ class OracleConfig:
         return (self.project_root / candidate).resolve()
 
     def _resolve_db_path(self) -> Path:
-        db_path_env = os.environ.get("ORACLE_DB_PATH", "").strip()
+        db_path_env = _clean_env_string(os.environ.get("ORACLE_DB_PATH"))
         if db_path_env:
             return self._resolve_project_path(db_path_env)
         if os.environ.get("VERCEL"):
@@ -525,11 +543,15 @@ class OracleAgent:
             self.cfg.shell_timeout,
             self.cfg.http_timeout,
         )
-        self.client = genai.Client(
-            vertexai=True,
-            project=self.cfg.gcp_project,
-            location=self.cfg.gcp_location,
-        )
+        api_key = _get_api_key()
+        if api_key:
+            self.client = genai.Client(api_key=api_key)
+        else:
+            self.client = genai.Client(
+                vertexai=True,
+                project=self.cfg.gcp_project,
+                location=self.cfg.gcp_location,
+            )
 
         # Initialize MCP + Skills (Oracle 5.0)
         self._tool_registry: ToolRegistry | None = None

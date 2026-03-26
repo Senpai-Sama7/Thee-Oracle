@@ -317,6 +317,13 @@ def test_gui_skills_endpoints(gui_client, gui_app_module) -> None:
     assert gui_app_module.app_state.agent.reload_count == 1
 
 
+def test_gui_serves_favicon(gui_client) -> None:
+    response = gui_client.get("/favicon.ico")
+
+    assert response.status_code == 200
+    assert response.mimetype == "image/svg+xml"
+
+
 def test_gui_config_requires_api_key(gui_client) -> None:
     config_response = gui_client.get("/api/config")
     settings_response = gui_client.get("/api/settings")
@@ -354,7 +361,30 @@ def test_gui_socket_rejects_unsupported_tool(gui_app_module) -> None:
     events = authorized_client.get_received()
 
     assert any(
-        event["name"] == "error" and event["args"][0]["message"] == "Unsupported tool"
+        event["name"] == "agent_error" and event["args"][0]["message"] == "Unsupported tool"
+        for event in events
+    )
+    authorized_client.disconnect()
+
+
+def test_gui_socket_surfaces_agent_error_on_chat_failure(gui_app_module, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(prompt: str, session_id: str = "default") -> str:
+        del prompt, session_id
+        raise RuntimeError("simulated browser failure")
+
+    monkeypatch.setattr(gui_app_module.app_state.agent, "run", boom)
+
+    authorized_client = gui_app_module.socketio.test_client(
+        gui_app_module.app,
+        auth={"apiKey": "test-key"},
+    )
+    assert authorized_client.is_connected()
+
+    authorized_client.emit("send_message", {"message": "trigger failure", "session_id": "session-err"})
+    events = authorized_client.get_received()
+
+    assert any(
+        event["name"] == "agent_error" and event["args"][0]["message"] == "simulated browser failure"
         for event in events
     )
     authorized_client.disconnect()

@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Oracle Agent Control Deck</title>
+    <link rel="icon" href="{{ url_for('favicon') }}" sizes="any">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -442,7 +444,7 @@
                                 <button class="ghost-button" id="export-settings" type="button">Export config</button>
                             </div>
                         </div>
-                        <div class="settings-grid">
+                        <form class="settings-grid" id="settings-form">
                             <section class="surface-card">
                                 <div class="surface-head"><h4>Model behavior</h4></div>
                                 <label class="field-label" for="model-select">Model</label>
@@ -498,7 +500,7 @@
                                 </div>
                                 <p class="settings-note" id="settings-note">Protected reads and writes require the GUI API key when `ORACLE_API_KEY` is configured.</p>
                             </section>
-                        </div>
+                        </form>
                     </div>
 
                     <div class="view-stage" id="help-view">
