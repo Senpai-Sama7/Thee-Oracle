@@ -1,55 +1,36 @@
-"""Oracle Agent - Flask app for Vercel deployment."""
+"""Vercel/WSGI entrypoint for the Oracle GUI."""
 
-from flask import Flask, jsonify
+from __future__ import annotations
 
-app = Flask(__name__)
+import logging
+from threading import Lock
 
-@app.route('/')
-def index():
-    """Main page."""
-    return """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Oracle Agent - Vercel</title>
-    <style>
-        body { font-family: Arial; text-align: center; padding: 50px; 
-               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-               color: white; min-height: 100vh; margin: 0; }
-        .container { max-width: 800px; margin: 0 auto; background: rgba(255,255,255,0.1);
-                     backdrop-filter: blur(10px); border-radius: 20px; padding: 40px; }
-        h1 { font-size: 3em; }
-        .success { color: #4CAF50; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🚀 Oracle Agent</h1>
-        <h2 class="success">✅ Vercel Deployment Working!</h2>
-        <p>Your Oracle Agent is successfully deployed and running.</p>
-    </div>
-</body>
-</html>
-    """
+from gui import app as gui_app
 
-@app.route('/api/health')
-def health():
-    """Health check."""
-    return jsonify({"status": "healthy", "service": "oracle-agent"})
+logger = logging.getLogger(__name__)
 
-@app.route('/api/status')
-def status():
-    """System status."""
-    return jsonify({
-        "status": "online",
-        "version": "5.0.0-hardened",
-        "features": ["workflow_engine", "agent_collaboration", "code_generation"]
-    })
+app = gui_app.app
+_bootstrap_lock = Lock()
+_bootstrap_state = {"attempted": False}
 
-# Vercel serverless handler
-def handler(environ, start_response):
-    """WSGI handler for Vercel."""
-    return app(environ, start_response)
+gui_app.create_gui_directories()
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
+def ensure_agent_initialized() -> None:
+    if gui_app.app_state.agent is not None:
+        return
+
+    with _bootstrap_lock:
+        if gui_app.app_state.agent is not None or _bootstrap_state["attempted"]:
+            return
+
+        _bootstrap_state["attempted"] = True
+        if not gui_app.initialize_agent():
+            logger.warning(
+                "Oracle Agent failed to initialize during WSGI startup; GUI will run in degraded mode"
+            )
+
+
+@app.before_request
+def bootstrap_oracle_agent() -> None:
+    ensure_agent_initialized()
