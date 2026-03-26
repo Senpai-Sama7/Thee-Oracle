@@ -1,0 +1,103 @@
+# Vercel deployment ignore file
+# Exclude unnecessary files to stay under 15,000 file limit
+
+# Git and version control
+.git/
+.gitignore
+.github/
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+.env
+.env.*
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+
+# Documentation and examples (can be large)
+docs/
+examples/
+*.md
+!README.md
+
+# Benchmarks and data
+.benchmarks/
+data/
+*.csv
+*.json
+!vercel.json
+!vercel_requirements.txt
+
+# Infrastructure and deployment
+infrastructure/
+docker/
+*.yml
+!docker-compose.yml
+*.yaml
+!docker-compose.yaml
+
+# Archive and backup
+archive/
+backup/
+*.zip
+*.tar.gz
+*.rar
+
+# Large dependencies
+node_modules/
+site-packages/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Security and audit files
+security*.md
+security*.json
+flask_security_audit.json
+
+# Test outputs
+demo_output.md
+*.out
+
+# Exclude everything except essential files
+*
+!api/
+!vercel.json
+!vercel_requirements.txt
+!README.md
+!LICENSE
+!.gitignore
