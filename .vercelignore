@@ -51,6 +51,8 @@ docs/
 examples/
 *.md
 !README.md
+!skills/**/SKILL.md
+!skills/**/references/*.md
 
 # Benchmarks and data
 .benchmarks/

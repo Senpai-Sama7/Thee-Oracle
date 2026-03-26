@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "description": "Build validation scripts for the Oracle Agent Flask/Vercel deployment.",
   "scripts": {
-    "build": "python3 -m py_compile app.py gui/app.py src/oracle/agent_system.py && node --check gui/static/js/app.js && python3 -c \"from app import app; client = app.test_client(); assert client.get('/').status_code == 200; assert client.get('/api/status').status_code == 200\" && VERCEL=1 python3 -c \"from app import app; client = app.test_client(); assert client.get('/').status_code == 200; assert client.get('/api/status').status_code == 200\""
+    "build": "python3 -m py_compile app.py api/index.py gui/app.py src/oracle/agent_system.py && node --check gui/static/js/app.js && python3 -c \"from app import app; client = app.test_client(); assert client.get('/').status_code == 200; assert client.get('/api/status').status_code == 200\" && VERCEL=1 python3 -c \"from app import app; client = app.test_client(); assert client.get('/').status_code == 200; assert client.get('/api/status').status_code == 200\""
   }
 }
