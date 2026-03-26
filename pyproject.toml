@@ -1,6 +1,7 @@
 [project]
-name = "orchestrator-enhancements"
-version = "5.0.0-alpha"
+name = "oracle-agent-vercel"
+version = "5.0.0-hardened"
+description = "Oracle Agent - Enterprise AI Agent Platform on Vercel"
 requires-python = ">=3.11"
 
 [tool.mypy]
@@ -41,3 +42,7 @@ filterwarnings = [
     "ignore:Type google\\._upb\\._message\\.MessageMapContainer uses PyType_Spec.*:DeprecationWarning",
     "ignore:Type google\\._upb\\._message\\.ScalarMapContainer uses PyType_Spec.*:DeprecationWarning",
 ]
+
+[tool.vercel]
+type = "python"
+entrypoint = "api/app.py"
