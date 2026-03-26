@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/skill_loader.py
+# hypothesis_version: 6.151.9
+
+['#', '\'"', '*', '*.py', ', ', '- ', '---', '.', '...', ':', 'Available skills:', 'Legacy skill package', 'ORACLE_SKILLS_DIR', 'Reloading skills...', 'SKILL.md', 'SKILL_DESCRIPTION', 'SKILL_NAME', 'TOOLS', '[^a-zA-Z0-9_]+', '_', '__', '__init__.py', 'allowed-tools', 'allowed_tools', 'and', 'are', 'assets', 'description', 'entrypoint', 'for', 'from', 'handler', 'into', 'legacy_module', 'manifest_path', 'name', 'parameters', 'references', 'resources', 'root_path', 'scripts', 'setup', 'skill.py', 'skill_package', 'skills/', 'source_type', 'teardown', 'that', 'the', 'this', 'tool_names', 'triggers', 'use', 'utf-8', 'when', 'with']

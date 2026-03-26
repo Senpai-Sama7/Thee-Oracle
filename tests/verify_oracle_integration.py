@@ -5,15 +5,35 @@ Oracle Integration Test - Tests all components without requiring Google Cloud AP
 
 import json
 import time
+import os
 import psycopg2
 import pika
+
+
+POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+POSTGRES_DB = os.environ.get("POSTGRES_DB", "enterprise_oracle")
+POSTGRES_USER = os.environ.get("POSTGRES_USER", "oracle_admin")
+POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "")
+
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "")
+RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS", "")
+
+
+def require_secret(name, value):
+    if not value:
+        raise RuntimeError(f"{name} must be set before running this verification helper")
 
 
 def test_database():
     """Test PostgreSQL connection and table structure."""
     try:
+        require_secret("POSTGRES_PASSWORD", POSTGRES_PASSWORD)
         conn = psycopg2.connect(
-            host="localhost", database="enterprise_oracle", user="oracle_admin", password="vault_password_2026"
+            host=POSTGRES_HOST,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
         )
         cursor = conn.cursor()
 
@@ -51,9 +71,14 @@ def test_database():
 def test_rabbitmq():
     """Test RabbitMQ connection and message flow."""
     try:
+        require_secret("RABBITMQ_USER", RABBITMQ_USER)
+        require_secret("RABBITMQ_PASS", RABBITMQ_PASS)
         # Test connection
         connection = pika.BlockingConnection(
-            pika.ConnectionParameters(host="localhost", credentials=pika.PlainCredentials("admin", "oracle_pass_2026"))
+            pika.ConnectionParameters(
+                host=RABBITMQ_HOST,
+                credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS),
+            )
         )
         channel = connection.channel()
 

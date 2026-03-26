@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 import requests
 
@@ -44,7 +45,7 @@ class Integration:
     def _connect_api(self) -> bool:
         """Connect to API integration."""
         url = self.config.get("url")
-        if not isinstance(url, str) or not url:
+        if not isinstance(url, str) or not self._is_allowed_url(url):
             return False
         response = requests.get(url, timeout=10)
         return response.status_code == 200
@@ -65,7 +66,7 @@ class Integration:
         """Execute API operation."""
         del operation
         url_value = self.config.get("url")
-        if not isinstance(url_value, str) or not url_value:
+        if not isinstance(url_value, str) or not self._is_allowed_url(url_value):
             raise ValueError("API integration missing URL")
 
         method = str(data.get("method", "GET"))
@@ -73,13 +74,18 @@ class Integration:
         if not isinstance(headers, dict):
             headers = {}
 
-        response = requests.request(method, url_value, headers=headers, json=data.get("body"))
+        response = requests.request(method, url_value, headers=headers, json=data.get("body"), timeout=10)
         return {
             "status_code": response.status_code,
             "data": response.json()
             if response.headers.get("content-type", "").startswith("application/json")
             else response.text,
         }
+
+    @staticmethod
+    def _is_allowed_url(url: str) -> bool:
+        parsed = urlsplit(url)
+        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
     def _execute_database(self, operation: str, data: dict[str, Any]) -> dict[str, Any]:
         """Execute database operation."""

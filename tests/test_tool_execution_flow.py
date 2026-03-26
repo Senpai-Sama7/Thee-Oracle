@@ -101,7 +101,11 @@ def test_tool_dispatch():
     elif func_name == "send_email":
         tool_result = send_email.invoke(func_args)
 
-    assert "queued for delivery" in tool_result or "failed" in tool_result
+    assert (
+        "queued for delivery" in tool_result
+        or "failed" in tool_result
+        or "RABBITMQ_URL is not configured" in tool_result
+    )
     print(f"✅ send_email dispatch: {tool_result}")
 
 

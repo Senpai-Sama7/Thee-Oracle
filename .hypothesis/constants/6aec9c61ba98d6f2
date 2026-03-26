@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/tool_registry.py
+# hypothesis_version: 6.151.9
+
+['DELETE', 'GET', 'HTTP method', 'PATCH', 'POST', 'PUT', 'URL to fetch', 'array', 'body', 'boolean', 'builtin', 'calls', 'command', 'content', 'delete', 'description', 'enum', 'error', 'failures', 'file_system_ops', 'headers', 'http_fetch', 'integer', 'list', 'mcp', 'method', 'number', 'object', 'operation', 'path', 'read', 'reason', 'required', 'result', 'shell_execute', 'skill', 'string', 'success', 'type', 'url', 'vision_capture', 'write']

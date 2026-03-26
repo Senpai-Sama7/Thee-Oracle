@@ -1,184 +1,78 @@
 # Oracle Agent GUI
 
-A modern web-based interface for the Oracle Agent Platform providing an intuitive chat experience with real-time tool execution visualization.
+The GUI is a Flask + Socket.IO wrapper around `OracleAgent`. It provides a browser chat surface, health/status endpoints, and a small settings API.
 
-## Features
+## Current Behavior
 
-- **💬 Interactive Chat Interface**: Real-time conversation with Oracle Agent
-- **🔧 Tool Execution Panel**: Direct access to shell, file, HTTP, and vision tools
-- **📊 Live Status Monitoring**: Agent health, configuration, and GCS backup status
-- **🌙 Dark Theme**: Modern, eye-friendly interface with syntax highlighting
-- **⚡ Real-time Updates**: WebSocket-powered live message streaming
-- **💾 Session Management**: Persistent conversation history with clear/backup options
-- **🔗 Health Check Links**: Quick access to monitoring endpoints
+- `gui/launch.py` and `gui/app.py` now use the same port setting: `ORACLE_GUI_PORT`, default `5001`
+- the default GUI bind host is `127.0.0.1`; set `ORACLE_GUI_HOST` explicitly if you need remote access
+- the GUI imports cleanly even when `flask_talisman` or `flask_limiter` are not installed
+- if those optional packages are missing, the app logs warnings and falls back to no-op wrappers, but still applies baseline browser security headers directly
+- protected config endpoints use `ORACLE_API_KEY`
+- authenticated Socket.IO clients are required when `ORACLE_API_KEY` is set
+- direct browser-triggered tool execution is limited to the GUI tool set: `shell_execute`, `file_system_ops`, `http_fetch`, and `vision_capture`
+- Socket.IO cross-origin access is same-origin by default; set `ORACLE_GUI_CORS_ORIGINS` only when you intentionally need cross-origin browser access
 
-## Quick Start
+## Launch
 
-### 1. Install Dependencies
-
-```bash
-cd /home/donovan/Projects/replit/gui
-pip install -r requirements.txt
-```
-
-### 2. Launch the GUI
+From the project root:
 
 ```bash
-# Make sure you're in the project root
 python3 gui/launch.py
 ```
 
-Or manually:
+Or run the app directly:
 
 ```bash
-python3 gui/app.py
+ORACLE_GUI_HOST=127.0.0.1 ORACLE_GUI_PORT=5001 python3 gui/app.py
 ```
 
-### 3. Access the Interface
+Default URL:
 
-Open your browser to: **http://localhost:5000**
-
-## Architecture
-
-The GUI consists of three layers:
-
-1. **Backend (Flask + SocketIO)**: `app.py`
-   - Wraps OracleAgent with HTTP/WebSocket API
-   - Handles tool execution and session management
-   - Serves static files and templates
-
-2. **Frontend (HTML/CSS/JS)**: `templates/` and `static/`
-   - Modern responsive design with dark theme
-   - Real-time chat with markdown rendering
-   - Interactive tool execution panel
-
-3. **Integration Layer**
-   - Connects to existing OracleAgent instance
-   - Reuses configuration from `.env` file
-   - Supports both sync and async agent methods
-
-## Directory Structure
-
-```
-gui/
-├── app.py                 # Flask backend
-├── launch.py             # Launch script with dependency checking
-├── requirements.txt      # Python dependencies
-├── README.md            # This file
-├── templates/
-│   └── index.html       # Main GUI template
-└── static/
-    ├── css/
-    │   └── style.css    # GUI styles
-    └── js/
-        └── app.js       # Frontend JavaScript
+```text
+http://127.0.0.1:5001
 ```
 
-## Configuration
+## Environment
 
-The GUI automatically loads configuration from your existing `.env` file:
+Relevant variables:
 
-- `ORACLE_MODEL_ID` - AI model to use
-- `GCP_PROJECT_ID` - Google Cloud project (optional)
-- `ORACLE_MAX_TURNS` - Maximum conversation turns
-- `ORACLE_SHELL_TIMEOUT` - Shell command timeout
-- `ORACLE_HTTP_TIMEOUT` - HTTP request timeout
+- `ORACLE_GUI_PORT`
+- `ORACLE_GUI_HOST`
+- `ORACLE_API_KEY`
+- `SECRET_KEY`
+- `ORACLE_GUI_CORS_ORIGINS`
+- `ORACLE_MODEL_ID`
+- `GCP_PROJECT_ID`
+- `GCP_LOCATION`
+- `ORACLE_PROJECT_ROOT`
+- `ORACLE_MAX_TURNS`
+- `ORACLE_SHELL_TIMEOUT`
+- `ORACLE_HTTP_TIMEOUT`
 
-## API Endpoints
+The GUI reads `.env` if present and reinitializes the wrapped `OracleAgent` after config updates.
+Protected settings reads/writes and Socket.IO actions require `ORACLE_API_KEY`.
+Wildcard Socket.IO CORS is ignored unless `ORACLE_GUI_ALLOW_ANY_ORIGIN=true` is also set.
 
-- `GET /` - Main GUI interface
-- `GET /api/status` - Agent status and configuration
-- `GET /api/config` - Get/set configuration
-- `WebSocket /` - Real-time communication
+## Verified Endpoints
 
-## WebSocket Events
+These routes are covered by `tests/test_http_entrypoints.py`:
 
-### Client → Server
-- `send_message` - Send chat message
-- `execute_tool` - Execute specific tool
-- `backup_to_gcs` - Trigger cloud backup
-- `clear_history` - Clear session history
+- `GET /api/status`
+- `GET /api/health`
+- `GET /api/help/features`
+- `GET /api/config` with `X-API-Key`
+- authenticated Socket.IO connect with `auth.apiKey`
 
-### Server → Client
-- `message` - Assistant response
-- `thinking` - Agent processing indicator
-- `tool_result` - Tool execution result
-- `backup_result` - Backup completion status
-- `error` - Error messages
+Additional routes in `gui/app.py` include:
 
-## Tool Execution
+- `GET /api/settings`
+- `GET /api/settings/export`
+- `POST /api/settings/reset`
 
-The sidebar provides direct access to Oracle Agent's tools:
+## Notes
 
-1. **Shell**: Execute bash commands with safety sandboxing
-2. **Files**: Read, write, list, and delete files
-3. **HTTP**: Make API requests to external services
-4. **Vision**: Capture screenshots (when available)
-
-Click any tool to open the execution panel with a form for the tool's parameters.
-
-## Session Management
-
-- **Session ID**: Displayed in chat header (default: "default")
-- **Clear History**: Removes all messages from current session
-- **Backup to GCS**: Triggers cloud backup (if configured)
-- **Persistent Storage**: Conversations saved to `data/oracle_core.db`
-
-## Troubleshooting
-
-### Agent Not Initialized
-- Check that `.env` file exists with valid configuration
-- Verify `GCP_PROJECT_ID` is set for full AI mode
-- Run `demo.py` first to test without credentials
-
-### Connection Issues
-- Ensure port 5000 is not in use by another application
-- Check that Flask-SocketIO dependencies are installed
-- Verify no firewall blocking WebSocket connections
-
-### Tool Execution Failures
-- Verify `ORACLE_PROJECT_ROOT` is set correctly
-- Check tool timeouts in configuration
-- Review agent logs for detailed error messages
-
-## Development
-
-### Adding New Tools
-1. Add tool button to sidebar in `templates/index.html`
-2. Create tool form configuration in `static/js/app.js`
-3. Implement tool handler in `app.py` if needed
-
-### Customizing Theme
-- Modify CSS variables in `static/css/style.css`
-- Primary color: `--primary: #6366f1`
-- Background: `--bg-dark: #0f172a`
-- Text: `--text-primary: #f8fafc`
-
-### Extending API
-Add new Flask routes in `app.py`:
-
-```python
-@app.route("/api/custom")
-def custom_endpoint():
-    return jsonify({"data": "custom"})
-```
-
-## Integration with Main System
-
-The GUI is designed to work alongside the existing Oracle Agent infrastructure:
-
-- Shares the same `.env` configuration
-- Uses the same SQLite database for history
-- Integrates with existing health check server
-- Supports both production and demo modes
-
-## Security Considerations
-
-- All file operations are sandboxed to `ORACLE_PROJECT_ROOT`
-- Shell commands use explicit list form (no shell injection)
-- No credentials exposed in frontend
-- Configuration changes require server restart
-
-## License
-
-Part of Oracle Agent Platform v5.0
+- Conversation and backup behavior depend on the wrapped `OracleAgent`
+- file operations still inherit the `ORACLE_PROJECT_ROOT` sandbox
+- if GCP credentials are missing, the GUI can still start, but model-backed chat paths will not work
+- assistant markdown is sanitized in the browser before insertion into the DOM

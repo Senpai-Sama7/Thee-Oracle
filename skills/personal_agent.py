@@ -9,8 +9,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Constants (mirroring main.py environment)
+RABBITMQ_URL = os.environ.get("RABBITMQ_URL", "").strip()
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
-RABBITMQ_QUEUE = os.environ.get("RABBITMQ_QUEUE", "task_queue")
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "guest")
+RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS", "guest")
+RABBITMQ_QUEUE = os.environ.get("EMAIL_QUEUE", "email_tasks")
 DB_PATH = os.environ.get("AGENT_DB_PATH", "agent_state.db")
 
 
@@ -47,12 +50,19 @@ def send_email(to: str, subject: str, body: str) -> str:
     logger.info("Skill Call: send_email", extra={"to": to, "subject": subject})
     message = json.dumps({"type": "email", "to": to, "subject": subject, "body": body})
 
-    params = pika.ConnectionParameters(
-        host=RABBITMQ_HOST,
-        heartbeat=600,
-        blocked_connection_timeout=5.0,
-        socket_timeout=5.0,
-    )
+    if RABBITMQ_URL:
+        params: pika.ConnectionParameters | pika.URLParameters = pika.URLParameters(RABBITMQ_URL)
+        params.heartbeat = 600
+        params.blocked_connection_timeout = 5.0
+        params.socket_timeout = 5.0
+    else:
+        params = pika.ConnectionParameters(
+            host=RABBITMQ_HOST,
+            credentials=pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS),
+            heartbeat=600,
+            blocked_connection_timeout=5.0,
+            socket_timeout=5.0,
+        )
 
     last_error: Exception | None = None
     for attempt in range(3):

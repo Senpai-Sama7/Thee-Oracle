@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/email_worker/main.py
+# hypothesis_version: 6.151.9
+
+[200, 600, '1', '3', '587', '@', 'DLX_QUEUE', 'EMAIL_QUEUE', 'EmailCommand', 'From', 'INFO', 'LOG_LEVEL', 'MAX_RETRIES', 'Message-ID', 'PREFETCH_COUNT', 'RABBITMQ_URL', 'SMTP_FROM', 'SMTP_HOST', 'SMTP_PASSWORD', 'SMTP_PORT', 'SMTP_USER', 'SMTP_USE_TLS', 'Subject', 'To', 'WORKER_DB', '__main__', 'agent@example.com', 'alternative', 'attempt', 'attempts', 'body', 'completed_at', 'created_at', 'delay_s', 'email', 'email_retry_backoff', 'email_sent', 'email_task_completed', 'email_task_started', 'email_tasks', 'email_tasks.dlq', 'email_worker', 'email_worker_ready', 'error', 'id', 'localhost', 'malformed_message', 'payload', 'plain', 'queue', 'rabbitmq_reconnect', 'rabbitmq_url_missing', 'retry_count', 'send_email', 'session_id', 'started_at', 'status', 'subject', 'submitted_at', 'to', 'true', 'type', 'unknown_message_type', 'url', 'workflow_id']

@@ -1,7 +1,7 @@
 # Oracle Agent System Architecture
-> **Status:** Production Ready (v4.0.0) | **Target:** Oracle Platform v2 Migration
+> **Status:** Historical broad architecture reference. Cross-check current behavior against `README.md` and `AGENTS.md`.
 
-This document provides a comprehensive, production-ready architectural representation of the Oracle Agent orchestration system, including both the existing v1 components and the v2 multi-agent scaling structures (e.g., Ralph agent routing).
+This document provides a broad architectural representation of the Oracle Agent orchestration system, including earlier v1/v2 migration concepts. It is useful for context, but it is not the source of truth for the current maintained runtime.
 
 ## System Architecture Diagram
 

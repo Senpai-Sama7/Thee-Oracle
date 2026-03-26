@@ -217,6 +217,18 @@ class ToolRegistry:
         """
         return self._builtin_declarations + self._mcp_declarations + self._skill_declarations
 
+    def get_skill_catalog(self) -> List[Dict[str, Any]]:
+        """Return discovered skill metadata for prompt-time selection."""
+        if not self.skill_loader:
+            return []
+        return self.skill_loader.get_catalog()
+
+    def build_skill_prompt_context(self, prompt: str, max_skills: int = 3) -> str:
+        """Build prompt-time skill context for the current request."""
+        if not self.skill_loader:
+            return ""
+        return self.skill_loader.build_prompt_context(prompt, max_skills=max_skills)
+
     async def dispatch(self, name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         """
         Route tool call to appropriate handler.

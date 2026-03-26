@@ -4,13 +4,17 @@ Oracle Agent GUI Settings & Help Test Suite
 Tests the new Settings and Help functionality comprehensively
 """
 
+import os
 import socketio
 import requests
+
+REQUEST_TIMEOUT = 10
 
 
 class SettingsHelpTester:
     def __init__(self, base_url="http://localhost:5001"):
         self.base_url = base_url
+        self.api_key = os.environ.get("ORACLE_API_KEY", "").strip()
         self.sio = socketio.Client()
         self.test_results = []
 
@@ -31,6 +35,14 @@ class SettingsHelpTester:
         def agent_status(data):
             print(f"📊 Agent status received: {data}")
 
+    def build_headers(self, include_json=False):
+        headers = {}
+        if include_json:
+            headers["Content-Type"] = "application/json"
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        return headers
+
     def run_test(self, test_name, test_func):
         """Run a single test and record the result."""
         print(f"\n🧪 Testing: {test_name}")
@@ -48,7 +60,11 @@ class SettingsHelpTester:
 
     def test_settings_api_get(self):
         """Test GET settings API."""
-        response = requests.get(f"{self.base_url}/api/config")
+        response = requests.get(
+            f"{self.base_url}/api/config",
+            headers=self.build_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code == 200:
             config = response.json()
             required_fields = ["model_id", "max_turns", "shell_timeout", "http_timeout", "log_level"]
@@ -61,14 +77,21 @@ class SettingsHelpTester:
         test_settings = {"max_turns": 30, "shell_timeout": 120, "http_timeout": 30, "log_level": "WARNING"}
 
         response = requests.post(
-            f"{self.base_url}/api/config", json=test_settings, headers={"Content-Type": "application/json"}
+            f"{self.base_url}/api/config",
+            json=test_settings,
+            headers=self.build_headers(include_json=True),
+            timeout=REQUEST_TIMEOUT,
         )
 
         if response.status_code == 200:
             result = response.json()
             if result.get("success"):
                 # Verify settings were applied
-                verify_response = requests.get(f"{self.base_url}/api/config")
+                verify_response = requests.get(
+                    f"{self.base_url}/api/config",
+                    headers=self.build_headers(),
+                    timeout=REQUEST_TIMEOUT,
+                )
                 if verify_response.status_code == 200:
                     config = verify_response.json()
                     return (
@@ -80,7 +103,11 @@ class SettingsHelpTester:
 
     def test_settings_export(self):
         """Test settings export functionality."""
-        response = requests.get(f"{self.base_url}/api/settings/export")
+        response = requests.get(
+            f"{self.base_url}/api/settings/export",
+            headers=self.build_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code == 200:
             export_data = response.json()
             return (
@@ -92,12 +119,20 @@ class SettingsHelpTester:
 
     def test_settings_reset(self):
         """Test settings reset functionality."""
-        response = requests.post(f"{self.base_url}/api/settings/reset")
+        response = requests.post(
+            f"{self.base_url}/api/settings/reset",
+            headers=self.build_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code == 200:
             result = response.json()
             if result.get("success"):
                 # Verify defaults were applied
-                verify_response = requests.get(f"{self.base_url}/api/config")
+                verify_response = requests.get(
+                    f"{self.base_url}/api/config",
+                    headers=self.build_headers(),
+                    timeout=REQUEST_TIMEOUT,
+                )
                 if verify_response.status_code == 200:
                     config = verify_response.json()
                     return (
@@ -109,7 +144,7 @@ class SettingsHelpTester:
 
     def test_help_features_api(self):
         """Test help features API."""
-        response = requests.get(f"{self.base_url}/api/help/features")
+        response = requests.get(f"{self.base_url}/api/help/features", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             features = response.json()
             required_sections = ["ai_conversations", "tools", "settings"]
@@ -118,7 +153,7 @@ class SettingsHelpTester:
 
     def test_help_content_quality(self):
         """Test quality of help content."""
-        response = requests.get(f"{self.base_url}/api/help/features")
+        response = requests.get(f"{self.base_url}/api/help/features", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             features = response.json()
 
@@ -148,7 +183,7 @@ class SettingsHelpTester:
     def test_navigation_ui(self):
         """Test navigation UI elements."""
         # Test that the main page loads with navigation
-        response = requests.get(f"{self.base_url}/")
+        response = requests.get(f"{self.base_url}/", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             content = response.text
             # Check for navigation elements
@@ -164,7 +199,7 @@ class SettingsHelpTester:
 
     def test_settings_ui_elements(self):
         """Test settings UI elements."""
-        response = requests.get(f"{self.base_url}/")
+        response = requests.get(f"{self.base_url}/", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             content = response.text
             # Check for settings form elements
@@ -185,7 +220,7 @@ class SettingsHelpTester:
 
     def test_help_ui_elements(self):
         """Test help UI elements."""
-        response = requests.get(f"{self.base_url}/")
+        response = requests.get(f"{self.base_url}/", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             content = response.text
             # Check for help section elements
@@ -203,7 +238,7 @@ class SettingsHelpTester:
 
     def test_responsive_design(self):
         """Test responsive design elements."""
-        response = requests.get(f"{self.base_url}/")
+        response = requests.get(f"{self.base_url}/", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             content = response.text
             # Check for responsive design indicators
@@ -213,7 +248,7 @@ class SettingsHelpTester:
 
     def test_accessibility_features(self):
         """Test accessibility features."""
-        response = requests.get(f"{self.base_url}/")
+        response = requests.get(f"{self.base_url}/", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200:
             content = response.text
             # Check for accessibility features

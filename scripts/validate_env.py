@@ -1,209 +1,155 @@
 #!/usr/bin/env python3
 """
-Oracle Agent Environment Configuration Validator
-Validates and reports on all .env variable utilization
+Oracle Agent environment validator.
+
+Reads the local .env file, reports the variables relevant to the maintained
+runtime paths, and explains which modes are fully configured.
 """
 
-import os
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
-def validate_env_variables():
-    """Validate all environment variables are properly configured"""
-    # Environment validation for Oracle Agent configuration
-    print("🔍 ORACLE AGENT ENVIRONMENT VALIDATION") 
+
+ENV_PATH = Path(".env")
+
+SECTION_VARS: list[tuple[str, list[tuple[str, bool, str]]]] = [
+    (
+        "Core Oracle Agent",
+        [
+            ("ORACLE_MODEL_ID", True, "Default model ID for OracleAgent."),
+            ("GCP_PROJECT_ID", False, "Required for live Gemini/Vertex AI calls."),
+            ("GCP_LOCATION", False, "Vertex AI region."),
+            ("ORACLE_PROJECT_ROOT", False, "Sandbox root for file operations."),
+            ("ORACLE_MAX_TURNS", False, "Maximum turns in the ReAct loop."),
+            ("ORACLE_SHELL_TIMEOUT", False, "Shell tool timeout in seconds."),
+            ("ORACLE_HTTP_TIMEOUT", False, "HTTP tool timeout in seconds."),
+            ("ORACLE_LOG_LEVEL", False, "Runtime log level."),
+        ],
+    ),
+    (
+        "Router / MCP / Skills",
+        [
+            ("ORACLE_USE_MODEL_ROUTER", False, "Enable the multi-provider router path."),
+            ("ORACLE_MODEL_CHAIN_CONFIG", False, "Router provider-chain config."),
+            ("ORACLE_MCP_CONFIG", False, "MCP server config file."),
+            ("ORACLE_MCP_TIMEOUT", False, "MCP connection timeout."),
+            ("ORACLE_SKILLS_DIR", False, "Directory scanned by SkillLoader."),
+            ("OPENAI_API_KEY", False, "Optional OpenAI fallback provider key."),
+            ("ANTHROPIC_API_KEY", False, "Optional Anthropic fallback provider key."),
+            ("OLLAMA_BASE_URL", False, "Optional Ollama endpoint."),
+        ],
+    ),
+    (
+        "Webhook and GUI",
+        [
+            ("WEBHOOK_API_KEY", False, "Optional API key for src/oracle/main.py."),
+            ("ORACLE_API_KEY", False, "API key for protected GUI config endpoints."),
+            ("ORACLE_GUI_PORT", False, "Port used by gui/launch.py and gui/app.py."),
+        ],
+    ),
+    (
+        "Personal Agent and Email Worker",
+        [
+            ("PERSONAL_AGENT_DB", False, "SQLite path for personal-agent state."),
+            ("RABBITMQ_URL", False, "Required for personal_agent and email_worker message flow."),
+            ("EMAIL_QUEUE", False, "Email worker queue name."),
+            ("DLX_QUEUE", False, "Email worker dead-letter queue."),
+            ("SMTP_HOST", False, "SMTP host for email delivery."),
+            ("SMTP_PORT", False, "SMTP port."),
+            ("SMTP_USER", False, "SMTP username."),
+            ("SMTP_PASSWORD", False, "SMTP password."),
+            ("SMTP_FROM", False, "From address for outbound mail."),
+            ("SMTP_USE_TLS", False, "Enable STARTTLS for SMTP."),
+        ],
+    ),
+    (
+        "Knowledge Worker",
+        [
+            ("RABBITMQ_HOST", False, "Host for src/oracle/knowledge_worker.py."),
+            ("RABBITMQ_USER", False, "RabbitMQ username for the knowledge worker."),
+            ("RABBITMQ_PASS", False, "RabbitMQ password for the knowledge worker."),
+            ("DISCOVERY_ENGINE_ID", False, "Discovery Engine serving engine ID."),
+            ("GCP_PROJECT_NUMBER", False, "Used by Discovery Engine API URL construction."),
+            ("SAFE_GCP_SERVICES", False, "Optional allowlist of permitted GCP services."),
+        ],
+    ),
+    (
+        "Storage",
+        [
+            ("GCS_BUCKET_NAME", False, "Enable backup and screenshot uploads to GCS."),
+        ],
+    ),
+]
+
+
+def load_env(path: Path) -> dict[str, str]:
+    env: dict[str, str] = {}
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env[key] = value
+    return env
+
+
+def print_section(name: str, entries: list[tuple[str, bool, str]], env: dict[str, str]) -> None:
+    print(f"{name}:")
+    for key, required, description in entries:
+        value = env.get(key, "")
+        configured = value != ""
+        status = "OK " if configured else ("REQ" if required else "OPT")
+        shown = value if configured else "NOT SET"
+        print(f"  [{status}] {key} = {shown}")
+        print(f"        {description}")
+    print()
+
+
+def validate_env_variables() -> int:
+    print("Oracle Agent Environment Validation")
     print("=" * 60)
-    
-    # Load .env file
-    env_file = Path(".env")
-    if not env_file.exists():
-        print("❌ .env file not found")
-        return False
-    
-    # Parse .env variables
-    env_vars = {}
-    with open(env_file) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, value = line.split("=", 1)
-                env_vars[key] = value
-    
-    print(f"📋 Found {len(env_vars)} environment variables")
+
+    if not ENV_PATH.exists():
+        print("ERROR: .env file not found in the project root.")
+        print("Create one from .env.example before running this validator.")
+        return 1
+
+    env = load_env(ENV_PATH)
+    print(f"Loaded {len(env)} variables from {ENV_PATH}")
     print()
-    
-    # Core GCP Configuration
-    print("🔐 CORE GCP CONFIGURATION:")
-    gcp_vars = [
-        "GCP_PROJECT_ID",
-        "GCP_PROJECT_NAME", 
-        "GCP_PROJECT_NUMBER",
-        "GCP_REGION",
-        "GCP_LOCATION",
-        "GOOGLE_API_KEY",
-        "GEMINI_API_KEY",
-        "GOOGLE_CLOUD_API_KEY"
-    ]
-    
-    for var in gcp_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value[:50]}{'...' if len(value) > 50 else ''}")
-    
-    print()
-    
-    # Oracle Agent Configuration
-    print("🤖 ORACLE AGENT CONFIGURATION:")
-    oracle_vars = [
-        "ORACLE_PROJECT_ROOT",
-        "ORACLE_MODEL_ID",
-        "ORACLE_MAX_TURNS",
-        "ORACLE_SHELL_TIMEOUT",
-        "ORACLE_HTTP_TIMEOUT",
-        "ORACLE_LOG_LEVEL"
-    ]
-    
-    for var in oracle_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Database Configuration
-    print("💾 DATABASE CONFIGURATION:")
-    db_vars = [
-        "DATABASE_URL",
-        "GCP_DATABASE_ID"
-    ]
-    
-    for var in db_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Storage Configuration
-    print("🪣 STORAGE CONFIGURATION:")
-    storage_vars = [
-        "GCS_BUCKET_NAME",
-        "RABBITMQ_URL",
-        "RABBITMQ_QUEUE",
-        "RABBITMQ_EXCHANGE"
-    ]
-    
-    for var in storage_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Discovery Engine Configuration
-    print("🔍 DISCOVERY ENGINE CONFIGURATION:")
-    discovery_vars = [
-        "DISCOVERY_ENGINE_ID",
-        "GCP_DATA_STORE_ID"
-    ]
-    
-    for var in discovery_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Monitoring Configuration
-    print("📊 MONITORING CONFIGURATION:")
-    monitoring_vars = [
-        "PROMETHEUS_PORT",
-        "METRICS_ENABLED",
-        "HEALTH_CHECK_PORT"
-    ]
-    
-    for var in monitoring_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Security Configuration
-    print("🔒 SECURITY CONFIGURATION:")
-    security_vars = [
-        "ENABLE_AUTHENTICATION",
-        "API_KEY",
-        "JWT_SECRET"
-    ]
-    
-    for var in security_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Performance Configuration
-    print("⚡ PERFORMANCE CONFIGURATION:")
-    perf_vars = [
-        "MAX_CONCURRENT_SESSIONS",
-        "SESSION_TIMEOUT",
-        "CACHE_TTL"
-    ]
-    
-    for var in perf_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value}")
-    
-    print()
-    
-    # Safe Services Configuration
-    print("🛡️  SAFE SERVICES CONFIGURATION:")
-    safe_vars = [
-        "SAFE_GCP_SERVICES"
-    ]
-    
-    for var in safe_vars:
-        value = env_vars.get(var, "NOT SET")
-        status = "✅" if value != "NOT SET" and value != "" else "❌"
-        print(f"  {status} {var}: {value[:60]}{'...' if len(value) > 60 else ''}")
-    
-    print()
-    
-    # Summary
-    total_vars = len(env_vars)
-    set_vars = sum(1 for v in env_vars.values() if v != "" and v != "NOT SET")
-    print("📊 CONFIGURATION SUMMARY:")
-    print(f"  • Total variables: {total_vars}")
-    print(f"  • Configured: {set_vars}")
-    print(f"  • Missing: {total_vars - set_vars}")
-    print(f"  • Completion: {(set_vars/total_vars)*100:.1f}%")
-    # Critical requirements check
-    critical_vars = ["GCP_PROJECT_ID", "ORACLE_MODEL_ID", "GOOGLE_API_KEY"]
-    missing_critical = [v for v in critical_vars if env_vars.get(v, "") == ""]
-    
-    if not missing_critical:
-        print(" ALL CRITICAL VARIABLES CONFIGURED")
-        print(" Oracle Agent is ready for production use!")
-        print("🚀 Oracle Agent is ready for production use!")
+
+    for section_name, entries in SECTION_VARS:
+        print_section(section_name, entries, env)
+
+    missing_required = [key for key, required, _ in SECTION_VARS[0][1] if required and env.get(key, "") == ""]
+
+    print("Mode Summary:")
+    if env.get("GCP_PROJECT_ID", ""):
+        print("  - OracleAgent live Gemini mode: configured")
     else:
-        print(f"❌ MISSING CRITICAL VARIABLES: {', '.join(missing_critical)}")
-        print("🔧 Please configure these variables before production use")
-    
-    return len(missing_critical) == 0
+        print("  - OracleAgent live Gemini mode: not configured (demo/local tool mode still works)")
+
+    if env.get("RABBITMQ_URL", ""):
+        print("  - Personal agent / email worker AMQP flow: configured")
+    else:
+        print("  - Personal agent / email worker AMQP flow: disabled until RABBITMQ_URL is set")
+
+    if env.get("GCS_BUCKET_NAME", ""):
+        print("  - GCS backups: configured")
+    else:
+        print("  - GCS backups: disabled")
+
+    if missing_required:
+        print()
+        print(f"ERROR: missing required variables: {', '.join(missing_required)}")
+        return 1
+
+    print()
+    print("Validation complete.")
+    return 0
+
 
 if __name__ == "__main__":
-    # Set environment variables from .env
-    env_file = Path(".env")
-    if env_file.exists():
-        with open(env_file) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    os.environ[key] = value
-    
-    success = validate_env_variables()
-    sys.exit(0 if success else 1)
+    sys.exit(validate_env_variables())

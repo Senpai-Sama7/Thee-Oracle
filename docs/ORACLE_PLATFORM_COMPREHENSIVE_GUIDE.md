@@ -1,8 +1,10 @@
 # Oracle Agent Enterprise Platform v5.0
 
+> This guide is useful for broad platform context, but the current source of truth for setup and verified runtime behavior is `README.md` plus `AGENTS.md`.
+
 ## 🎯 Executive Summary
 
-The **Oracle Agent Enterprise Platform** is a production-grade AI orchestration system that combines advanced reasoning with robust infrastructure. As of **v5.0 (March 2026)**, the platform has completed its **Hardening Sprint**, achieving 100% type safety and a fully modular skill architecture.
+The **Oracle Agent Enterprise Platform** is an AI orchestration workspace built around a hardened `OracleAgent` runtime plus related service wrappers. As of **March 2026**, the maintained runtime path is green in the checked workspace, while some adjacent modules remain prototype-grade and should be treated accordingly.
 
 ### Key Capabilities
 - **Autonomous AI Agents** powered by Gemini 2.0 with hardened ReAct loops
@@ -44,7 +46,7 @@ Tools are organized into isolated Python modules in the `skills/` directory.
 │   └── [custom skills]
 ├── infrastructure/                # Production Ops
 │   └── docker-compose.yml        # Infrastructure services
-├── tests/                         # Quality Assurance (125+ tests)
+├── tests/                         # Quality Assurance (129 tests)
 └── README.md                      # Platform overview
 ```
 

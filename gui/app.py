@@ -4,15 +4,21 @@ Flask backend to serve the GUI and handle WebSocket communication
 """
 
 import os
+import re
 import sys
 import asyncio
 import logging
+import secrets
+from collections import defaultdict
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from datetime import datetime
+from threading import Lock
+from time import monotonic
 
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, session
 from flask_socketio import SocketIO, emit
 
 try:
@@ -20,7 +26,9 @@ try:
 except ImportError:
     class Talisman:  # type: ignore[no-redef]
         def __init__(self, app, **kwargs):
-            logging.getLogger(__name__).warning("flask_talisman not installed; GUI security headers are disabled")
+            logging.getLogger(__name__).warning(
+                "flask_talisman not installed; using built-in GUI security header fallback"
+            )
 
 
 try:
@@ -31,12 +39,44 @@ except ImportError:
         return request.remote_addr or "127.0.0.1"
 
     class Limiter:  # type: ignore[no-redef]
-        def __init__(self, *args, **kwargs):
-            logging.getLogger(__name__).warning("flask_limiter not installed; GUI rate limits are disabled")
+        _window_seconds = {"minute": 60, "hour": 3600, "day": 86400}
 
-        def limit(self, _limit: str):
+        def __init__(self, *args, **kwargs):
+            logging.getLogger(__name__).warning(
+                "flask_limiter not installed; using in-process fallback rate limiting"
+            )
+            self._calls: dict[str, list[float]] = defaultdict(list)
+            self._key_func = kwargs.get("key_func", get_remote_address)
+            self._lock = Lock()
+
+        @classmethod
+        def _parse_limit(cls, raw_limit: str) -> tuple[int, int]:
+            parts = raw_limit.strip().split()
+            if len(parts) != 3 or parts[1] != "per":
+                raise ValueError(f"Unsupported limit format: {raw_limit}")
+            count = int(parts[0])
+            unit = parts[2].rstrip("s").lower()
+            if unit not in cls._window_seconds:
+                raise ValueError(f"Unsupported limit unit: {unit}")
+            return count, cls._window_seconds[unit]
+
+        def limit(self, raw_limit: str):
+            max_calls, window_seconds = self._parse_limit(raw_limit)
+
             def decorator(func):
-                return func
+                @wraps(func)
+                def wrapped(*args, **kwargs):
+                    key = f"{func.__name__}:{self._key_func()}"
+                    now = monotonic()
+                    with self._lock:
+                        calls = [stamp for stamp in self._calls[key] if now - stamp < window_seconds]
+                        if len(calls) >= max_calls:
+                            return jsonify({"error": "Rate limit exceeded"}), 429
+                        calls.append(now)
+                        self._calls[key] = calls
+                    return func(*args, **kwargs)
+
+                return wrapped
 
             return decorator
 
@@ -49,23 +89,55 @@ from oracle.agent_system import OracleAgent, OracleConfig
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+GUI_ALLOWED_DIRECT_TOOLS = frozenset(
+    {
+        "shell_execute",
+        "file_system_ops",
+        "http_fetch",
+        "vision_capture",
+    }
+)
+MAX_GUI_MESSAGE_LENGTH = 8_000
+MAX_GUI_SESSION_ID_LENGTH = 128
+
+
+def env_flag(*names: str) -> bool:
+    for name in names:
+        if os.environ.get(name, "").strip().lower() == "true":
+            return True
+    return False
+
+
+GUI_SECURITY_POLICY = {
+    "default-src": "'self'",
+    "script-src": "'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+    "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+    "font-src": "'self' https://fonts.gstatic.com",
+    "img-src": "'self' data: https:",
+    "connect-src": "'self' ws: wss:",
+    "object-src": "'none'",
+    "base-uri": "'self'",
+}
+
 # Initialize Flask app
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "oracle-gui-secret-key-change-in-production")
+secret_key = os.environ.get("SECRET_KEY", "").strip()
+if not secret_key:
+    secret_key = secrets.token_urlsafe(32)
+    logger.warning("SECRET_KEY not set; using ephemeral GUI secret key")
+force_https = env_flag("ORACLE_GUI_FORCE_HTTPS", "FORCE_HTTPS")
+app.config["SECRET_KEY"] = secret_key
+app.config["FORCE_HTTPS"] = force_https
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = force_https
 
 # Initialize security middleware
 Talisman(
     app,
-    force_https=app.config.get("FORCE_HTTPS", False),
+    force_https=app.config["FORCE_HTTPS"],
     strict_transport_security=True,
-    content_security_policy={
-        "default-src": "'self'",
-        "script-src": "'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com",
-        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
-        "font-src": "'self' https://fonts.gstatic.com",
-        "img-src": "'self' data: https:",
-        "connect-src": "'self' ws: wss:",
-    },
+    content_security_policy=GUI_SECURITY_POLICY,
     referrer_policy="strict-origin-when-cross-origin",
     feature_policy={"geolocation": "'none'", "camera": "'none'", "microphone": "'none'"},
 )
@@ -73,8 +145,21 @@ Talisman(
 # Initialize rate limiting
 limiter = Limiter(app=app, key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
 
+
+def get_socket_cors_origins() -> str | list[str] | None:
+    raw_origins = os.environ.get("ORACLE_GUI_CORS_ORIGINS", "").strip()
+    if not raw_origins:
+        return None
+    if raw_origins == "*" and env_flag("ORACLE_GUI_ALLOW_ANY_ORIGIN"):
+        return "*"
+    if raw_origins == "*":
+        logger.warning("Ignoring wildcard ORACLE_GUI_CORS_ORIGINS without ORACLE_GUI_ALLOW_ANY_ORIGIN=true")
+        return None
+    return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+
+
 # Initialize SocketIO for real-time communication (using threading mode for compatibility)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins=get_socket_cors_origins(), async_mode="threading")
 
 @dataclass
 class AppState:
@@ -83,6 +168,50 @@ class AppState:
 
 
 app_state = AppState()
+
+
+def get_expected_api_key() -> str:
+    return os.environ.get("ORACLE_API_KEY", "").strip()
+
+
+def is_authorized_api_key(api_key: str | None) -> bool:
+    expected_key = get_expected_api_key()
+    if not expected_key:
+        return False
+    if not api_key:
+        return False
+    return secrets.compare_digest(api_key, expected_key)
+
+
+def serialize_csp(policy: dict[str, str]) -> str:
+    return "; ".join(f"{directive} {value}" for directive, value in policy.items())
+
+
+def normalize_session_id(raw_value: Any) -> str:
+    if not isinstance(raw_value, str):
+        return "default"
+    cleaned = re.sub(r"[\x00-\x1f\x7f]+", " ", raw_value).strip()
+    if not cleaned:
+        return "default"
+    return cleaned[:MAX_GUI_SESSION_ID_LENGTH]
+
+
+def socket_request_authorized() -> bool:
+    expected_key = get_expected_api_key()
+    if not expected_key:
+        return True
+    return bool(session.get("socket_authenticated"))
+
+
+@app.after_request
+def apply_security_headers(response):
+    response.headers.setdefault("Content-Security-Policy", serialize_csp(GUI_SECURITY_POLICY))
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "geolocation=(), camera=(), microphone=()")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    return response
 
 
 def initialize_agent() -> bool:
@@ -108,16 +237,14 @@ def initialize_agent() -> bool:
 
 def require_auth(f):
     """Decorator to require authentication for API endpoints"""
-    from functools import wraps
-
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Simple API key authentication for demo
-        # In production, use proper JWT or OAuth
-        api_key = request.headers.get("X-API-Key")
-        expected_key = os.environ.get("ORACLE_API_KEY", "demo-api-key")
+        expected_key = get_expected_api_key()
+        if not expected_key:
+            return jsonify({"error": "ORACLE_API_KEY is not configured"}), 503
 
-        if not api_key or api_key != expected_key:
+        api_key = request.headers.get("X-API-Key")
+        if not is_authorized_api_key(api_key):
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
 
@@ -268,6 +395,7 @@ def handle_config():
 
 
 @app.route("/api/settings/export")
+@require_auth
 def export_settings():
     """Export current settings as JSON file."""
     try:
@@ -302,6 +430,7 @@ def export_settings():
 
 
 @app.route("/api/settings", methods=["GET"])
+@require_auth
 def get_settings():
     """Get current settings."""
     try:
@@ -358,6 +487,7 @@ def health_check():
 
 
 @app.route("/api/settings/reset", methods=["POST"])
+@require_auth
 def reset_settings():
     """Reset settings to defaults."""
     try:
@@ -448,8 +578,16 @@ def get_help_features():
 
 
 @socketio.on("connect")
-def handle_connect():
+def handle_connect(auth: Optional[dict[str, Any]] = None):
     """Handle client connection."""
+    expected_key = get_expected_api_key()
+    if expected_key:
+        provided_key = auth.get("apiKey") if isinstance(auth, dict) else None
+        if not is_authorized_api_key(provided_key):
+            logger.warning("Rejected unauthorized GUI socket connection: sid=%s", request.sid)
+            return False
+        session["socket_authenticated"] = True
+
     logger.info(f"Client connected: {request.sid}")
     emit("connected", {"status": "connected", "timestamp": datetime.now().isoformat()})
 
@@ -470,22 +608,39 @@ def handle_connect():
 @socketio.on("disconnect")
 def handle_disconnect():
     """Handle client disconnection."""
+    session.pop("socket_authenticated", None)
     logger.info(f"Client disconnected: {request.sid}")
 
 
 @socketio.on("send_message")
 def handle_message(data):
     """Handle incoming chat message from client."""
+    if not socket_request_authorized():
+        emit("error", {"message": "Unauthorized"})
+        return
+
     if not app_state.agent:
         emit("error", {"message": "Oracle Agent not initialized"})
         return
 
     try:
-        prompt = data.get("message", "").strip()
-        session_id = data.get("session_id", "default")
+        if not isinstance(data, dict):
+            emit("error", {"message": "Invalid message payload"})
+            return
+
+        prompt = data.get("message", "")
+        session_id = normalize_session_id(data.get("session_id", "default"))
+
+        if not isinstance(prompt, str):
+            emit("error", {"message": "Message must be a string"})
+            return
+        prompt = prompt.strip()
 
         if not prompt:
             emit("error", {"message": "Empty message"})
+            return
+        if len(prompt) > MAX_GUI_MESSAGE_LENGTH:
+            emit("error", {"message": "Message exceeds GUI limit"})
             return
 
         # Log the incoming message
@@ -534,13 +689,28 @@ def handle_message(data):
 @socketio.on("execute_tool")
 def handle_tool_execution(data):
     """Handle direct tool execution from GUI."""
+    if not socket_request_authorized():
+        emit("error", {"message": "Unauthorized"})
+        return
+
     if not app_state.agent:
         emit("error", {"message": "Agent not initialized"})
         return
 
     try:
+        if not isinstance(data, dict):
+            emit("error", {"message": "Invalid tool payload"})
+            return
+
         tool_name = data.get("tool")
         args = data.get("args", {})
+
+        if not isinstance(tool_name, str) or tool_name not in GUI_ALLOWED_DIRECT_TOOLS:
+            emit("error", {"message": "Unsupported tool"})
+            return
+        if not isinstance(args, dict):
+            emit("error", {"message": "Tool arguments must be an object"})
+            return
 
         emit("tool_executing", {"tool": tool_name, "args": args})
 
@@ -564,6 +734,10 @@ def handle_tool_execution(data):
 @socketio.on("backup_to_gcs")
 def handle_backup():
     """Trigger GCS backup."""
+    if not socket_request_authorized():
+        emit("error", {"message": "Unauthorized"})
+        return
+
     if not app_state.agent:
         emit("error", {"message": "Agent not initialized"})
         return
@@ -578,7 +752,15 @@ def handle_backup():
 @socketio.on("clear_history")
 def clear_history(data):
     """Clear conversation history for a session."""
-    session_id = data.get("session_id", "default")
+    if not socket_request_authorized():
+        emit("error", {"message": "Unauthorized"})
+        return
+
+    if not isinstance(data, dict):
+        emit("error", {"message": "Invalid clear-history payload"})
+        return
+
+    session_id = normalize_session_id(data.get("session_id", "default"))
 
     if app_state.agent and hasattr(app_state.agent, "db"):
         try:
@@ -610,6 +792,9 @@ def create_gui_directories():
 
 
 if __name__ == "__main__":
+    gui_host = os.environ.get("ORACLE_GUI_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    gui_port = int(os.environ.get("ORACLE_GUI_PORT", "5001"))
+
     # Create directories
     templates_dir, static_dir = create_gui_directories()
 
@@ -621,5 +806,5 @@ if __name__ == "__main__":
         logger.warning("Agent initialization failed - GUI will show error state")
 
     # Run the Flask-SocketIO server
-    logger.info("Starting Oracle GUI on http://localhost:5001")
-    socketio.run(app, host="0.0.0.0", port=5001, debug=False)
+    logger.info("Starting Oracle GUI on http://%s:%s", gui_host, gui_port)
+    socketio.run(app, host=gui_host, port=gui_port, debug=False)

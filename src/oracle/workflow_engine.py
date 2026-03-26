@@ -4,15 +4,17 @@ Oracle Agent Workflow Engine - Enterprise Automation
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import subprocess
 import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
+
+from .safe_expression import evaluate_condition
 
 
 class WorkflowStatus(Enum):
@@ -111,7 +113,10 @@ class WorkflowEngine:
         del context
         url = str(step.get("url", "https://httpbin.org/get"))
         method = str(step.get("method", "GET"))
-        response = await asyncio.to_thread(requests.request, method, url)
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("API workflow steps require absolute http(s) URLs")
+        response = await asyncio.to_thread(requests.request, method, url, timeout=15)
         data: Any
         try:
             data = response.json()
@@ -136,48 +141,9 @@ class WorkflowEngine:
     @staticmethod
     def _safe_eval(condition: str, context: dict[str, Any]) -> bool:
         """Evaluate a simple boolean expression over the provided context."""
-        try:
-            literal_value = ast.literal_eval(condition)
-        except (ValueError, SyntaxError):
-            literal_value = None
-        else:
-            return bool(literal_value)
-
-        tree = ast.parse(condition, mode="eval")
-        allowed_nodes = (
-            ast.Expression,
-            ast.BoolOp,
-            ast.BinOp,
-            ast.UnaryOp,
-            ast.Compare,
-            ast.Name,
-            ast.Load,
-            ast.Constant,
-            ast.And,
-            ast.Or,
-            ast.Not,
-            ast.Add,
-            ast.Sub,
-            ast.Mult,
-            ast.Div,
-            ast.Mod,
-            ast.Pow,
-            ast.Eq,
-            ast.NotEq,
-            ast.Lt,
-            ast.LtE,
-            ast.Gt,
-            ast.GtE,
-        )
-        allowed_names = set(context.keys()) | {"True", "False", "None"}
-
-        for node in ast.walk(tree):
-            if not isinstance(node, allowed_nodes):
-                raise ValueError(f"Unsafe syntax: {type(node).__name__}")
-            if isinstance(node, ast.Name) and node.id not in allowed_names:
-                raise ValueError(f"Unsafe variable access: {node.id}")
-
-        return bool(eval(compile(tree, "<workflow_condition>", "eval"), {"__builtins__": {}}, context))
+        safe_context = {"True": True, "False": False, "None": None}
+        safe_context.update(context)
+        return evaluate_condition(condition, safe_context)
 
     def get_workflow_status(self, execution_id: str) -> dict[str, Any] | None:
         """Get workflow execution status."""

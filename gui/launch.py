@@ -5,7 +5,7 @@ Handles dependency checking and launches the web interface
 """
 
 import sys
-import subprocess
+import os
 
 
 def check_dependencies():
@@ -23,22 +23,11 @@ def check_dependencies():
             missing.append(package)
 
     return missing
-
-
-def install_dependencies(missing):
-    """Install missing dependencies."""
-    print(f"📦 Installing missing dependencies: {', '.join(missing)}")
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing)
-        print("✅ Dependencies installed successfully")
-        return True
-    except subprocess.CalledProcessError:
-        print("❌ Failed to install dependencies")
-        return False
-
-
 def main():
     """Launch the Oracle Agent GUI."""
+    gui_host = os.environ.get("ORACLE_GUI_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    gui_port = int(os.environ.get("ORACLE_GUI_PORT", "5001"))
+
     print("🚀 Oracle Agent GUI Launcher")
     print("=" * 50)
 
@@ -46,24 +35,19 @@ def main():
     missing = check_dependencies()
     if missing:
         print(f"⚠️  Missing dependencies: {', '.join(missing)}")
-        response = input("Install now? (y/n): ").strip().lower()
-        if response == "y":
-            if not install_dependencies(missing):
-                sys.exit(1)
-        else:
-            print("❌ Cannot launch without dependencies")
-            sys.exit(1)
+        print(f"Install them first, for example: {sys.executable} -m pip install {' '.join(missing)}")
+        sys.exit(1)
 
     # Launch the GUI
     print("🌐 Starting Oracle Agent GUI...")
-    print("📍 URL: http://localhost:5000")
+    print(f"📍 URL: http://{gui_host}:{gui_port}")
     print("⏹️  Press Ctrl+C to stop")
     print("=" * 50)
 
     try:
         from gui.app import app, socketio
 
-        socketio.run(app, host="0.0.0.0", port=5000, debug=False)
+        socketio.run(app, host=gui_host, port=gui_port, debug=False)
     except KeyboardInterrupt:
         print("\n👋 GUI stopped")
     except Exception as e:

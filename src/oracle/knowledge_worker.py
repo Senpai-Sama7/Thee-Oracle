@@ -2,9 +2,12 @@ import pika
 import json
 import os
 import subprocess
-import urllib.request
 import time
+from shutil import which
 from typing import Any, Dict, cast
+from urllib.parse import urlsplit
+
+import requests
 from pika.exceptions import AMQPConnectionError, ConnectionClosedByBroker
 
 
@@ -24,7 +27,16 @@ def load_env() -> Dict[str, str]:
 
 def get_token() -> str:
     """Retrieves an active OAuth2 access token via gcloud ADC."""
-    return subprocess.check_output(["gcloud", "auth", "print-access-token"], text=True).strip()
+    gcloud_path = which("gcloud")
+    if not gcloud_path:
+        raise FileNotFoundError("gcloud is not installed or not on PATH")
+    return subprocess.check_output([gcloud_path, "auth", "print-access-token"], text=True).strip()
+
+
+def _validate_google_api_url(url: str) -> None:
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or parsed.netloc != "discoveryengine.googleapis.com":
+        raise ValueError("Knowledge worker only supports Discovery Engine https endpoints")
 
 
 def discovery_engine_search(query: str) -> Dict[str, Any]:
@@ -40,12 +52,12 @@ def discovery_engine_search(query: str) -> Dict[str, Any]:
 
     # Payload configured for basic retrieval; summarySpec can be added for LLM answers
     payload = json.dumps({"query": query, "pageSize": 3}).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-
     try:
-        with urllib.request.urlopen(req) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            return cast(Dict[str, Any], result)
+        _validate_google_api_url(url)
+        response = requests.post(url, data=payload, headers=headers, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+        return cast(Dict[str, Any], result)
     except Exception as e:
         return {"error": str(e)}
 

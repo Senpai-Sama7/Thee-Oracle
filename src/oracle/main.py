@@ -3,7 +3,7 @@ import logging
 import time
 from pathlib import Path
 from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.security.api_key import APIKeyQuery
+from fastapi.security.api_key import APIKeyHeader, APIKeyQuery
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.status import HTTP_403_FORBIDDEN
 from pydantic import BaseModel
@@ -46,14 +46,20 @@ except Exception as e:
     logger.error(f"Failed to initialize Oracle Agent: {e}")
 
 # API Key Authentication
-api_key = os.environ.get("WEBHOOK_API_KEY")
-if api_key:
-    API_KEY = APIKeyQuery(name="api_key", auto_error=False)
+API_KEY_QUERY = APIKeyQuery(name="api_key", auto_error=False)
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-    async def get_api_key(api_key_query: str = Depends(API_KEY)) -> str:
-        if api_key_query != api_key:
-            raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="Could not validate credentials")
-        return api_key_query
+
+async def require_api_key(
+    api_key_query: str | None = Depends(API_KEY_QUERY),
+    api_key_header: str | None = Depends(API_KEY_HEADER),
+) -> None:
+    configured_key = os.environ.get("WEBHOOK_API_KEY", "").strip()
+    if not configured_key:
+        return
+    if api_key_query == configured_key or api_key_header == configured_key:
+        return
+    raise HTTPException(status_code=HTTP_403_FORBIDDEN, detail="Could not validate credentials")
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -61,14 +67,12 @@ if api_key:
 
 
 @app.post("/webhook")
-async def dialogflow_webhook(request: Request) -> dict[str, Any]:
+async def dialogflow_webhook(request: Request, _: None = Depends(require_api_key)) -> dict[str, Any]:
     """
     Handles POST requests from Dialogflow CX or Vertex AI Agent Builder.
     Uses OracleAgent for unified ReAct loop and tool orchestration.
     """
     req_data = await request.json()
-    logger.info(f"Received Webhook Request: {req_data}")
-
     if not agent:
         return {"fulfillmentResponse": {"messages": [{"text": {"text": ["Agent is not configured."]}}]}}
 
@@ -77,6 +81,13 @@ async def dialogflow_webhook(request: Request) -> dict[str, Any]:
     session_info = req_data.get("sessionInfo", {})
     session_params = session_info.get("parameters", {})
     session_id = session_info.get("session", "default-session")
+    logger.info(
+        "Received webhook request session=%s text_present=%s image_present=%s keys=%s",
+        session_id,
+        bool(user_input),
+        "image_base64" in req_data,
+        sorted(req_data.keys()),
+    )
 
     if not user_input and "last_user_utterance" in session_params:
         user_input = session_params.get("last_user_utterance", "")
@@ -110,7 +121,7 @@ class ChatResponse(BaseModel):
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(request: ChatRequest) -> ChatResponse:
+async def chat_endpoint(request: ChatRequest, _: None = Depends(require_api_key)) -> ChatResponse:
     """
     Unified chat endpoint leveraging OracleAgent's memory and state management.
     """
@@ -144,5 +155,6 @@ async def health_check() -> dict[str, Any]:
 if __name__ == "__main__":
     import uvicorn
 
+    host = os.environ.get("HOST", "127.0.0.1").strip() or "127.0.0.1"
     port = int(os.environ.get("PORT", "8080"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host=host, port=port)

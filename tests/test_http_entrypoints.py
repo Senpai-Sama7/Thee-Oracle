@@ -143,7 +143,7 @@ def test_personal_agent_chat_requires_message(
 
 
 @pytest.fixture
-def gui_client(monkeypatch: pytest.MonkeyPatch):
+def gui_app_module(monkeypatch: pytest.MonkeyPatch):
     gui_app = importlib.import_module("gui.app")
 
     stub_agent = StubOracleAgent()
@@ -162,6 +162,13 @@ def gui_client(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(gui_app.app_state, "agent_config", stub_config, raising=False)
     gui_app.app.config["TESTING"] = True
 
+    return gui_app
+
+
+@pytest.fixture
+def gui_client(gui_app_module):
+    gui_app = gui_app_module
+
     with gui_app.app.test_client() as client:
         yield client
 
@@ -177,6 +184,9 @@ def test_gui_status_and_health_endpoints(gui_client) -> None:
     assert health_response.status_code == 200
     assert health_response.json["status"] == "healthy"
     assert health_response.json["agent_status"]["model_id"] == "stub-model"
+    assert health_response.headers["X-Content-Type-Options"] == "nosniff"
+    assert health_response.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert "default-src 'self'" in health_response.headers["Content-Security-Policy"]
 
 
 def test_gui_help_and_config_endpoints(gui_client) -> None:
@@ -189,3 +199,63 @@ def test_gui_help_and_config_endpoints(gui_client) -> None:
     assert config_response.status_code == 200
     assert config_response.json["project_root"] == "/tmp/replit"
     assert config_response.json["model_id"] == "stub-model"
+
+
+def test_gui_config_requires_api_key(gui_client) -> None:
+    config_response = gui_client.get("/api/config")
+    settings_response = gui_client.get("/api/settings")
+    reset_response = gui_client.post("/api/settings/reset")
+
+    assert config_response.status_code == 401
+    assert config_response.json["error"] == "Unauthorized"
+    assert settings_response.status_code == 401
+    assert settings_response.json["error"] == "Unauthorized"
+    assert reset_response.status_code == 401
+    assert reset_response.json["error"] == "Unauthorized"
+
+
+def test_gui_socket_connection_requires_api_key(gui_app_module) -> None:
+    unauthorized_client = gui_app_module.socketio.test_client(gui_app_module.app)
+    assert not unauthorized_client.is_connected()
+
+    authorized_client = gui_app_module.socketio.test_client(
+        gui_app_module.app,
+        auth={"apiKey": "test-key"},
+    )
+
+    assert authorized_client.is_connected()
+    authorized_client.disconnect()
+
+
+def test_gui_socket_rejects_unsupported_tool(gui_app_module) -> None:
+    authorized_client = gui_app_module.socketio.test_client(
+        gui_app_module.app,
+        auth={"apiKey": "test-key"},
+    )
+    assert authorized_client.is_connected()
+
+    authorized_client.emit("execute_tool", {"tool": "dangerous_tool", "args": {}})
+    events = authorized_client.get_received()
+
+    assert any(
+        event["name"] == "error" and event["args"][0]["message"] == "Unsupported tool"
+        for event in events
+    )
+    authorized_client.disconnect()
+
+
+def test_gui_socket_cors_defaults_to_same_origin(monkeypatch: pytest.MonkeyPatch, gui_app_module) -> None:
+    monkeypatch.delenv("ORACLE_GUI_CORS_ORIGINS", raising=False)
+
+    assert gui_app_module.get_socket_cors_origins() is None
+
+
+def test_gui_socket_wildcard_cors_requires_explicit_override(
+    monkeypatch: pytest.MonkeyPatch, gui_app_module
+) -> None:
+    monkeypatch.setenv("ORACLE_GUI_CORS_ORIGINS", "*")
+    monkeypatch.delenv("ORACLE_GUI_ALLOW_ANY_ORIGIN", raising=False)
+    assert gui_app_module.get_socket_cors_origins() is None
+
+    monkeypatch.setenv("ORACLE_GUI_ALLOW_ANY_ORIGIN", "true")
+    assert gui_app_module.get_socket_cors_origins() == "*"

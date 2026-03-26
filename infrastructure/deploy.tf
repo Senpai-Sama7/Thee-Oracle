@@ -32,6 +32,12 @@ variable "webhook_api_key" {
   description = "API key for webhook authentication"
 }
 
+variable "allow_public_invoker" {
+  type        = bool
+  default     = false
+  description = "Set true to allow unauthenticated public access to the webhook."
+}
+
 # Enable required APIs (Consolidated pool)
 resource "google_project_service" "apis" {
   for_each = toset([
@@ -98,10 +104,9 @@ resource "google_cloud_run_v2_service" "webhook" {
   depends_on = [google_artifact_registry_repository.repo]
 }
 
-# IAM: Allow public access to the webhook (for Dialogflow CX)
-# In production, you'd use OIDC or a more secure method, but for a personal agent,
-# unauthenticated is often used for simple telephony testing.
+# IAM: Public access is opt-in. Keep the service private by default.
 resource "google_cloud_run_v2_service_iam_member" "public_access" {
+  count    = var.allow_public_invoker ? 1 : 0
   name     = google_cloud_run_v2_service.webhook.name
   location = google_cloud_run_v2_service.webhook.location
   role     = "roles/run.invoker"

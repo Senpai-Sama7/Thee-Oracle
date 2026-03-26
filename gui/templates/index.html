@@ -3,692 +3,499 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oracle Agent - AI Interface</title>
+    <title>Oracle Agent Control Deck</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Syne:wght@500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <div class="logo">
-                    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
-                        <circle cx="16" cy="16" r="6" fill="currentColor"/>
-                        <path d="M16 2V6M16 26V30M2 16H6M26 16H30" stroke="currentColor" stroke-width="2"/>
-                    </svg>
-                    <span>Oracle Agent</span>
-                </div>
-                <div class="version">v5.0</div>
-            </div>
+    <div class="noise-layer" aria-hidden="true"></div>
+    <div class="halo halo-one" aria-hidden="true"></div>
+    <div class="halo halo-two" aria-hidden="true"></div>
 
-            <div class="sidebar-section">
-                <h3>Status</h3>
-                <div class="status-indicator" id="agent-status">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Initializing...</span>
+    <div class="shell">
+        <aside class="command-rail" aria-label="Primary navigation">
+            <div class="brand-block">
+                <div class="brand-mark" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div>
+                    <p class="brand-kicker">Oracle Agent</p>
+                    <h1 class="brand-title">Control Deck</h1>
                 </div>
             </div>
 
-            <div class="sidebar-section">
-                <h3>Configuration</h3>
-                <div class="config-item">
-                    <label>Model</label>
-                    <span id="config-model">-</span>
+            <div class="status-panel">
+                <div class="status-pulse">
+                    <span class="status-dot" id="rail-status-dot"></span>
+                    <div>
+                        <p class="status-label">Network Link</p>
+                        <strong class="status-value" id="rail-status-text">Initializing</strong>
+                    </div>
                 </div>
-                <div class="config-item">
-                    <label>GCS Backup</label>
-                    <span id="config-gcs">-</span>
-                </div>
-                <div class="config-item">
-                    <label>Max Turns</label>
-                    <span id="config-turns">-</span>
-                </div>
-            </div>
-
-            <div class="sidebar-section">
-                <h3>Navigation</h3>
-                <div class="nav-list" role="navigation" aria-label="Main Navigation">
-                    <div class="nav-item active" data-view="chat" role="button" tabindex="0" aria-current="page">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Chat
+                <div class="mini-metric-grid">
+                    <div class="mini-metric">
+                        <span>Model</span>
+                        <strong id="config-model">-</strong>
                     </div>
-                    <div class="nav-item" data-view="dashboard" role="button" tabindex="0">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="4" width="3" height="8" stroke="currentColor" stroke-width="1.5"/><rect x="6.5" y="2" width="3" height="10" stroke="currentColor" stroke-width="1.5"/><rect x="11" y="6" width="3" height="6" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Dashboard
+                    <div class="mini-metric">
+                        <span>Backups</span>
+                        <strong id="config-gcs">-</strong>
                     </div>
-                    <div class="nav-item" data-view="sessions" role="button" tabindex="0">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.5"/><path d="M6 7h4" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Sessions
-                    </div>
-                    <div class="nav-item" data-view="analytics" role="button" tabindex="0">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 12h2v-8H2v8zM7 12h2V4H7v8zM12 12h2V7h-2v5z" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Analytics
-                    </div>
-                    <div class="nav-item" data-view="settings" role="button" tabindex="0">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Settings
-                    </div>
-                    <div class="nav-item" data-view="help" role="button" tabindex="0">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3M8 11h.01" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Help
+                    <div class="mini-metric">
+                        <span>Turns</span>
+                        <strong id="config-turns">-</strong>
                     </div>
                 </div>
             </div>
 
-            <div class="sidebar-section">
-                <h3>Tools</h3>
-                <div class="tool-list">
-                    <div class="tool-item" data-tool="shell_execute">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Shell
-                    </div>
-                    <div class="tool-item" data-tool="file_system_ops">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 3h5l2 2h5v8H2V3z" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Files
-                    </div>
-                    <div class="tool-item" data-tool="http_fetch">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                        HTTP
-                    </div>
-                    <div class="tool-item" data-tool="vision_capture">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.5"/></svg>
-                        Vision
-                    </div>
-                </div>
-            </div>
-
-            <div class="sidebar-actions">
-                <button class="btn btn-secondary" id="btn-backup">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 6l4-4 4 4M2 12h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                    Backup to GCS
+            <nav class="view-nav">
+                <button class="nav-pill active" data-view="chat" type="button">
+                    <span>Mission</span>
+                    <small>Live conversation</small>
                 </button>
-                <button class="btn btn-secondary" id="btn-clear">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 4h10l-1 10H4L3 4z" stroke="currentColor" stroke-width="1.5"/><path d="M6 2h4" stroke="currentColor" stroke-width="1.5"/></svg>
-                    Clear History
+                <button class="nav-pill" data-view="dashboard" type="button">
+                    <span>Pulse</span>
+                    <small>Operational signal</small>
                 </button>
-            </div>
+                <button class="nav-pill" data-view="sessions" type="button">
+                    <span>Sessions</span>
+                    <small>Memory lanes</small>
+                </button>
+                <button class="nav-pill" data-view="analytics" type="button">
+                    <span>Analytics</span>
+                    <small>Behavior patterns</small>
+                </button>
+                <button class="nav-pill" data-view="settings" type="button">
+                    <span>Settings</span>
+                    <small>Runtime controls</small>
+                </button>
+                <button class="nav-pill" data-view="help" type="button">
+                    <span>Guide</span>
+                    <small>Playbooks</small>
+                </button>
+            </nav>
 
-            <div class="sidebar-footer">
-                <a href="http://localhost:8080/health" target="_blank">Health Check</a>
-                <a href="http://localhost:8080/metrics" target="_blank">Metrics</a>
+            <section class="rail-section">
+                <div class="section-heading">
+                    <span>Direct tools</span>
+                    <button class="ghost-button" id="btn-open-command" type="button">Cmd</button>
+                </div>
+                <div class="tool-stack">
+                    <button class="tool-chip" data-tool="shell_execute" type="button">Shell</button>
+                    <button class="tool-chip" data-tool="file_system_ops" type="button">Files</button>
+                    <button class="tool-chip" data-tool="http_fetch" type="button">HTTP</button>
+                    <button class="tool-chip" data-tool="vision_capture" type="button">Vision</button>
+                </div>
+            </section>
+
+            <section class="rail-section">
+                <div class="section-heading">
+                    <span>Quick actions</span>
+                </div>
+                <div class="action-stack">
+                    <button class="action-button" id="btn-backup" type="button">Backup to GCS</button>
+                    <button class="action-button" id="btn-clear" type="button">Clear session history</button>
+                    <button class="action-button" id="btn-new-session" type="button">Start new session</button>
+                </div>
+            </section>
+
+            <div class="rail-footer">
+                <a href="http://localhost:8080/health" target="_blank" rel="noopener noreferrer">Health</a>
+                <a href="http://localhost:8080/metrics" target="_blank" rel="noopener noreferrer">Metrics</a>
             </div>
         </aside>
 
-        <!-- Main Content -->
-        <main class="main-content" role="main" aria-label="Oracle Agent Interface">
-            <!-- Chat Area -->
-            <!-- Chat View -->
-            <div class="view-container chat-view active" id="chat-view">
-                <div class="chat-header">
-                    <h2>Conversation</h2>
-                    <div class="session-info">
-                        Session: <span id="session-id">default</span>
+        <main class="workspace" role="main">
+            <header class="topbar">
+                <div class="topbar-copy">
+                    <p class="eyebrow">Autonomous systems console</p>
+                    <h2>Mission-grade orchestration with a human-friendly surface.</h2>
+                </div>
+                <div class="topbar-actions">
+                    <button class="command-button" id="command-palette-trigger" type="button">Command Palette</button>
+                    <div class="signal-pill" id="connection-pill">
+                        <span class="signal-dot"></span>
+                        <span id="connection-pill-text">Offline</span>
                     </div>
                 </div>
+            </header>
 
-                <div class="messages-container" id="messages">
-                    <div class="welcome-message">
-                        <h1>👋 Welcome to Oracle Agent</h1>
-                        <p>Your production-grade AI assistant with:</p>
-                        <ul>
-                            <li>🔧 Sandboxed tool execution (shell, files, HTTP, vision)</li>
-                            <li>💾 Persistent conversation history</li>
-                            <li>☁️ Cloud backup integration</li>
-                            <li>🔄 Multi-LLM support with automatic failover</li>
-                        </ul>
-                        <p class="hint">Type a message below to start the conversation.</p>
+            <section class="hero-panel">
+                <div class="hero-copy">
+                    <p class="eyebrow">Session vector</p>
+                    <h3 id="session-title">default</h3>
+                    <p id="hero-subtitle">Oracle is ready to reason, dispatch tools, and preserve the thread.</p>
+                </div>
+                <div class="hero-stats">
+                    <div class="hero-stat">
+                        <span>Messages</span>
+                        <strong id="hero-message-count">0</strong>
+                    </div>
+                    <div class="hero-stat">
+                        <span>Tool calls</span>
+                        <strong id="hero-tool-count">0</strong>
+                    </div>
+                    <div class="hero-stat">
+                        <span>Response time</span>
+                        <strong id="hero-response-time">0ms</strong>
                     </div>
                 </div>
+            </section>
 
-                <!-- Input Area -->
-                <div class="input-container">
-                    <div class="input-wrapper">
-                        <textarea 
-                            id="message-input" 
-                            placeholder="Ask Oracle Agent anything..."
-                            rows="1"
-                            aria-label="Message input"
-                            aria-describedby="input-hints"
-                        ></textarea>
-                        <button class="btn-send" id="btn-send" disabled aria-label="Send message">
-                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                                <path d="M2 10l16-8-8 8-8 8 16-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <div class="input-hints" id="input-hints">
-                        <span>Press <kbd>Enter</kbd> to send</span>
-                        <span>Press <kbd>Shift+Enter</kbd> for new line</span>
-                    </div>
-                </div>
-            </div>
+            <div class="workspace-grid">
+                <section class="stage">
+                    <div class="view-stage active" id="chat-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Mission feed</p>
+                                <h3>Conversation runway</h3>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-button" id="focus-composer-button" type="button">Focus composer</button>
+                            </div>
+                        </div>
 
-            <!-- Dashboard View -->
-            <div class="view-container dashboard-view" id="dashboard-view">
-                <div class="dashboard-header">
-                    <h2>Dashboard</h2>
-                    <p>Professional overview of Oracle Agent operations</p>
-                </div>
-                
-                <div class="dashboard-content">
-                    <!-- Quick Stats -->
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon">💬</div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="total-conversations">0</div>
-                                <div class="stat-label">Total Conversations</div>
+                        <div class="prompt-bank" id="prompt-bank">
+                            <button class="prompt-card" data-prompt="Summarize the architecture of this repository and identify the highest-risk integration points." type="button">
+                                <span class="prompt-title">Map the runtime</span>
+                                <span class="prompt-copy">Architecture reconnaissance with trust boundaries.</span>
+                            </button>
+                            <button class="prompt-card" data-prompt="Run a targeted code review on the current workspace and identify likely regressions." type="button">
+                                <span class="prompt-title">Audit current changes</span>
+                                <span class="prompt-copy">Fast hostile review with concrete findings.</span>
+                            </button>
+                            <button class="prompt-card" data-prompt="Inspect the repo and suggest the next highest-value engineering task." type="button">
+                                <span class="prompt-title">Find the next move</span>
+                                <span class="prompt-copy">Prioritize the best engineering step.</span>
+                            </button>
+                        </div>
+
+                        <div class="transcript-shell">
+                            <div class="messages-container" id="messages" aria-live="polite">
+                                <section class="welcome-card" id="welcome-card">
+                                    <p class="eyebrow">Ready state</p>
+                                    <h2>Run the repo like an operations room, not a demo.</h2>
+                                    <p>
+                                        This interface is built for serious work: long-running conversations, direct tool
+                                        control, status telemetry, and fast pivots between sessions, settings, and live
+                                        system context.
+                                    </p>
+                                    <div class="welcome-grid">
+                                        <div>
+                                            <h4>What Oracle can do</h4>
+                                            <ul>
+                                                <li>Reason across sessions with persistent history.</li>
+                                                <li>Call shell, file, HTTP, and vision tools safely.</li>
+                                                <li>Use MCP, skills, and multi-provider routing when configured.</li>
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <h4>Fast controls</h4>
+                                            <ul>
+                                                <li><kbd>Enter</kbd> send</li>
+                                                <li><kbd>Shift</kbd> + <kbd>Enter</kbd> newline</li>
+                                                <li><kbd>Ctrl</kbd> / <kbd>Cmd</kbd> + <kbd>K</kbd> command palette</li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🔧</div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="tools-executed">0</div>
-                                <div class="stat-label">Tools Executed</div>
+
+                        <div class="composer-shell">
+                            <div class="composer-meta">
+                                <span class="session-badge">Session <strong id="session-id">default</strong></span>
+                                <span class="session-badge">View <strong id="current-view-label">Mission</strong></span>
                             </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">⚡</div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="avg-response-time">0ms</div>
-                                <div class="stat-label">Avg Response Time</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">📊</div>
-                            <div class="stat-content">
-                                <div class="stat-value" id="success-rate">100%</div>
-                                <div class="stat-label">Success Rate</div>
+                            <div class="composer">
+                                <textarea id="message-input" placeholder="Ask Oracle to inspect, build, review, or operate..." rows="1" aria-label="Message input"></textarea>
+                                <button class="send-button" id="btn-send" type="button" disabled>
+                                    <span>Send</span>
+                                </button>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Recent Activity -->
-                    <div class="activity-section">
-                        <h3>Recent Activity</h3>
-                        <div class="activity-list" id="activity-list">
-                            <div class="activity-item">
-                                <div class="activity-icon">🚀</div>
-                                <div class="activity-content">
-                                    <div class="activity-title">Oracle Agent started</div>
-                                    <div class="activity-time">Just now</div>
+                    <div class="view-stage" id="dashboard-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Pulse board</p>
+                                <h3>Operational posture</h3>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-button" id="btn-refresh-dashboard" type="button">Refresh pulse</button>
+                            </div>
+                        </div>
+                        <div class="metric-board">
+                            <article class="metric-card">
+                                <span>Conversation load</span>
+                                <strong id="total-conversations">0</strong>
+                                <small>Tracked across local sessions</small>
+                            </article>
+                            <article class="metric-card">
+                                <span>Tool executions</span>
+                                <strong id="tools-executed">0</strong>
+                                <small>Direct calls plus agent tool work</small>
+                            </article>
+                            <article class="metric-card">
+                                <span>Avg. response</span>
+                                <strong id="avg-response-time">0ms</strong>
+                                <small>Measured from GUI exchange timing</small>
+                            </article>
+                            <article class="metric-card">
+                                <span>Success rate</span>
+                                <strong id="success-rate">100%</strong>
+                                <small>Live GUI action completion ratio</small>
+                            </article>
+                        </div>
+                        <div class="dashboard-columns">
+                            <section class="surface-card">
+                                <div class="surface-head">
+                                    <h4>Recent activity</h4>
                                 </div>
+                                <div class="activity-list" id="activity-list"></div>
+                            </section>
+                            <section class="surface-card">
+                                <div class="surface-head">
+                                    <h4>System posture</h4>
+                                </div>
+                                <div class="status-grid">
+                                    <div class="status-item"><span>AI model</span><strong id="status-model">-</strong></div>
+                                    <div class="status-item"><span>Database</span><strong id="status-db">-</strong></div>
+                                    <div class="status-item"><span>Cloud</span><strong id="status-cloud">-</strong></div>
+                                    <div class="status-item"><span>Memory</span><strong id="status-memory">-</strong></div>
+                                </div>
+                            </section>
+                        </div>
+                    </div>
+
+                    <div class="view-stage" id="sessions-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Session ledger</p>
+                                <h3>Conversation memory lanes</h3>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-button" id="btn-export-sessions" type="button">Export</button>
+                                <button class="ghost-button" id="btn-import-sessions" type="button">Import</button>
                             </div>
                         </div>
+                        <div class="sessions-list" id="sessions-list"></div>
                     </div>
 
-                    <!-- System Status -->
-                    <div class="system-status">
-                        <h3>System Status</h3>
-                        <div class="status-grid">
-                            <div class="status-item">
-                                <span class="status-label">AI Model</span>
-                                <span class="status-value" id="status-model">Connected</span>
+                    <div class="view-stage" id="analytics-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Behavior analytics</p>
+                                <h3>Signals and trend lines</h3>
                             </div>
-                            <div class="status-item">
-                                <span class="status-label">Database</span>
-                                <span class="status-value" id="status-db">Healthy</span>
-                            </div>
-                            <div class="status-item">
-                                <span class="status-label">Cloud Storage</span>
-                                <span class="status-value" id="status-cloud">Ready</span>
-                            </div>
-                            <div class="status-item">
-                                <span class="status-label">Memory Usage</span>
-                                <span class="status-value" id="status-memory">Normal</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Sessions View -->
-            <div class="view-container sessions-view" id="sessions-view">
-                <div class="sessions-header">
-                    <h2>Session Management</h2>
-                    <p>Manage conversation history and sessions</p>
-                </div>
-                
-                <div class="sessions-content">
-                    <div class="sessions-toolbar">
-                        <button class="btn btn-primary" id="btn-new-session">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                            New Session
-                        </button>
-                        <button class="btn btn-secondary" id="btn-export-sessions">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 12h12M8 2v8M4 8l4-4 4 4" stroke="currentColor" stroke-width="1.5"/></svg>
-                            Export
-                        </button>
-                        <button class="btn btn-secondary" id="btn-import-sessions">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M8 14v-8M12 8l-4 4-4-4" stroke="currentColor" stroke-width="1.5"/></svg>
-                            Import
-                        </button>
-                    </div>
-                    
-                    <div class="sessions-list" id="sessions-list">
-                        <!-- Sessions will be dynamically loaded -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Analytics View -->
-            <div class="view-container analytics-view" id="analytics-view">
-                <div class="analytics-header">
-                    <h2>Analytics & Insights</h2>
-                    <p>Advanced metrics and performance analysis</p>
-                </div>
-                
-                <div class="analytics-content">
-                    <div class="analytics-filters">
-                        <select id="analytics-timeframe" class="setting-select">
-                            <option value="1h">Last Hour</option>
-                            <option value="24h">Last 24 Hours</option>
-                            <option value="7d">Last 7 Days</option>
-                            <option value="30d">Last 30 Days</option>
-                        </select>
-                        <select id="analytics-metric" class="setting-select">
-                            <option value="all">All Metrics</option>
-                            <option value="conversations">Conversations</option>
-                            <option value="tools">Tool Usage</option>
-                            <option value="performance">Performance</option>
-                        </select>
-                    </div>
-                    
-                    <div class="analytics-charts">
-                        <div class="chart-container">
-                            <h3>Conversation Volume</h3>
-                            <canvas id="conversation-chart"></canvas>
-                        </div>
-                        <div class="chart-container">
-                            <h3>Tool Usage Distribution</h3>
-                            <canvas id="tool-chart"></canvas>
-                        </div>
-                        <div class="chart-container">
-                            <h3>Response Time Trends</h3>
-                            <canvas id="performance-chart"></canvas>
-                        </div>
-                    </div>
-                    
-                    <div class="analytics-insights">
-                        <h3>Key Insights</h3>
-                        <div class="insights-list" id="insights-list">
-                            <!-- Insights will be dynamically generated -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Settings View -->
-            <div class="view-container settings-view" id="settings-view">
-                <div class="settings-header">
-                    <h2>Settings</h2>
-                    <p>Configure Oracle Agent to your preferences</p>
-                </div>
-
-                <div class="settings-content">
-                    <!-- AI Model Settings -->
-                    <div class="settings-section">
-                        <h3>🤖 AI Model</h3>
-                        <div class="setting-group">
-                            <label for="model-select">AI Model</label>
-                            <select id="model-select" class="setting-select">
-                                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash (Fast)</option>
-                                <option value="gemini-2.5-pro-preview">Gemini 2.5 Pro (Advanced)</option>
-                                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Stable)</option>
-                            </select>
-                            <small>Choose the AI model for conversations</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label for="max-turns">Conversation Length</label>
-                            <div class="slider-container">
-                                <input type="range" id="max-turns" min="5" max="50" value="20" class="setting-slider">
-                                <span class="slider-value">20 turns</span>
-                            </div>
-                            <small>Maximum conversation turns before stopping</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label for="temperature">Creativity Level</label>
-                            <div class="slider-container">
-                                <input type="range" id="temperature" min="0" max="100" value="70" class="setting-slider">
-                                <span class="slider-value">70%</span>
-                            </div>
-                            <small>Higher values = more creative responses</small>
-                        </div>
-                    </div>
-
-                    <!-- Security & Limits -->
-                    <div class="settings-section">
-                        <h3>🔒 Security & Limits</h3>
-                        <div class="setting-group">
-                            <label for="shell-timeout">Shell Command Timeout</label>
-                            <div class="input-with-unit">
-                                <input type="number" id="shell-timeout" value="60" min="10" max="300" class="setting-input">
-                                <span class="unit">seconds</span>
-                            </div>
-                            <small>Maximum time for shell commands to run</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label for="http-timeout">HTTP Request Timeout</label>
-                            <div class="input-with-unit">
-                                <input type="number" id="http-timeout" value="15" min="5" max="120" class="setting-input">
-                                <span class="unit">seconds</span>
-                            </div>
-                            <small>Maximum time for web requests</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enable-file-sandbox" checked>
-                                <span class="checkmark"></span>
-                                File System Sandbox
-                            </label>
-                            <small>Restrict file operations to project directory</small>
-                        </div>
-                    </div>
-
-                    <!-- Cloud & Storage -->
-                    <div class="settings-section">
-                        <h3>☁️ Cloud & Storage</h3>
-                        <div class="setting-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enable-gcs-backup">
-                                <span class="checkmark"></span>
-                                Enable Cloud Backup
-                            </label>
-                            <small>Save conversations to Google Cloud Storage</small>
-                        </div>
-
-                        <div class="setting-group" id="gcs-settings" style="display: none;">
-                            <label for="gcs-bucket">GCS Bucket Name</label>
-                            <input type="text" id="gcs-bucket" placeholder="oracle-backups" class="setting-input">
-                            <small>Google Cloud Storage bucket for backups</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="auto-backup" checked>
-                                <span class="checkmark"></span>
-                                Auto-backup Conversations
-                            </label>
-                            <small>Automatically backup after each conversation</small>
-                        </div>
-                    </div>
-
-                    <!-- Advanced Settings -->
-                    <div class="settings-section">
-                        <h3>⚙️ Advanced</h3>
-                        <div class="setting-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enable-debug" checked>
-                                <span class="checkmark"></span>
-                                Show Debug Information
-                            </label>
-                            <small>Display detailed logs and tool execution info</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="enable-metrics" checked>
-                                <span class="checkmark"></span>
-                                Enable Performance Metrics
-                            </label>
-                            <small>Track usage statistics and performance</small>
-                        </div>
-
-                        <div class="setting-group">
-                            <label for="log-level">Log Level</label>
-                            <select id="log-level" class="setting-select">
-                                <option value="DEBUG">Debug (All logs)</option>
-                                <option value="INFO" selected>Info (Normal)</option>
-                                <option value="WARNING">Warning (Important only)</option>
-                                <option value="ERROR">Error (Critical only)</option>
-                            </select>
-                            <small>How much information to log</small>
-                        </div>
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="settings-actions">
-                        <button class="btn btn-primary" id="save-settings">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 12h12M8 2v8M4 6l4-4 4 4" stroke="currentColor" stroke-width="1.5"/></svg>
-                            Save Settings
-                        </button>
-                        <button class="btn btn-secondary" id="reset-settings">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 8a6 6 0 1 1 12 0M8 2v6l4 2" stroke="currentColor" stroke-width="1.5"/></svg>
-                            Reset to Defaults
-                        </button>
-                        <button class="btn btn-secondary" id="export-settings">
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 6l4-4 4 4M2 12h12" stroke="currentColor" stroke-width="1.5"/></svg>
-                            Export Config
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Help View -->
-            <div class="view-container help-view" id="help-view">
-                <div class="help-header">
-                    <h2>Help & Documentation</h2>
-                    <p>Learn how to use Oracle Agent effectively</p>
-                </div>
-
-                <div class="help-content">
-                    <!-- Quick Start -->
-                    <div class="help-section">
-                        <h3>🚀 Quick Start</h3>
-                        <div class="help-card">
-                            <h4>1. Start a Conversation</h4>
-                            <p>Type your question or request in the chat box at the bottom and press Enter. Oracle Agent will respond and can help you with:</p>
-                            <ul>
-                                <li>Answering questions and providing information</li>
-                                <li>Executing commands and scripts</li>
-                                <li>Managing files and directories</li>
-                                <li>Making web requests and API calls</li>
-                                <li>Analyzing data and generating reports</li>
-                            </ul>
-                        </div>
-
-                        <div class="help-card">
-                            <h4>2. Use Tools Directly</h4>
-                            <p>Click on tools in the sidebar to execute them manually:</p>
-                            <ul>
-                                <li><strong>Shell:</strong> Run terminal commands</li>
-                                <li><strong>Files:</strong> Read, write, list, or delete files</li>
-                                <li><strong>HTTP:</strong> Make web requests to APIs</li>
-                                <li><strong>Vision:</strong> Capture screenshots for analysis</li>
-                            </ul>
-                        </div>
-
-                        <div class="help-card">
-                            <h4>3. Configure Your Experience</h4>
-                            <p>Visit Settings to customize:</p>
-                            <ul>
-                                <li>AI model and creativity level</li>
-                                <li>Security settings and timeouts</li>
-                                <li>Cloud backup preferences</li>
-                                <li>Advanced debugging options</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <!-- Features Guide -->
-                    <div class="help-section">
-                        <h3>✨ Features Guide</h3>
-                        
-                        <div class="help-card">
-                            <h4>🤖 AI Conversations</h4>
-                            <p>Oracle Agent uses advanced AI to understand and respond to your requests. It can:</p>
-                            <ul>
-                                <li>Understand natural language requests</li>
-                                <li>Execute tools to accomplish tasks</li>
-                                <li>Remember context throughout conversations</li>
-                                <li>Learn from your preferences</li>
-                            </ul>
-                            <div class="example-box">
-                                <strong>Example:</strong> "List the files in the current directory and tell me which ones are Python files"
+                            <div class="panel-actions analytics-filters">
+                                <select id="analytics-timeframe">
+                                    <option value="1h">Last hour</option>
+                                    <option value="24h" selected>Last 24h</option>
+                                    <option value="7d">Last 7d</option>
+                                </select>
+                                <select id="analytics-metric">
+                                    <option value="all">All metrics</option>
+                                    <option value="conversations">Conversations</option>
+                                    <option value="tools">Tools</option>
+                                    <option value="performance">Performance</option>
+                                </select>
                             </div>
                         </div>
-
-                        <div class="help-card">
-                            <h4>🔧 Tool Execution</h4>
-                            <p>Oracle Agent can execute various tools safely:</p>
-                            <ul>
-                                <li><strong>Shell Commands:</strong> Run terminal commands with output capture</li>
-                                <li><strong>File Operations:</strong> Read, write, organize files and folders</li>
-                                <li><strong>Web Requests:</strong> Access APIs and fetch web content</li>
-                                <li><strong>Vision Analysis:</strong> Analyze screenshots and images</li>
-                            </ul>
-                            <div class="example-box">
-                                <strong>Example:</strong> "Create a backup of all .py files in a compressed archive"
-                            </div>
-                        </div>
-
-                        <div class="help-card">
-                            <h4>💾 Data Management</h4>
-                            <p>Your data is handled securely:</p>
-                            <ul>
-                                <li>Conversations saved locally in SQLite database</li>
-                                <li>Optional cloud backup to Google Cloud Storage</li>
-                                <li>File operations restricted to project directory</li>
-                                <li>All commands executed in sandboxed environment</li>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <!-- Settings Explained -->
-                    <div class="help-section">
-                        <h3>⚙️ Settings Explained</h3>
-                        
-                        <div class="help-card">
-                            <h4>AI Model Settings</h4>
-                            <ul>
-                                <li><strong>Model Selection:</strong> Choose between fast (Flash) or advanced (Pro) models</li>
-                                <li><strong>Conversation Length:</strong> Maximum turns before conversation ends</li>
-                                <li><strong>Creativity Level:</strong> Control response creativity (0% = factual, 100% = creative)</li>
-                            </ul>
-                        </div>
-
-                        <div class="help-card">
-                            <h4>Security Settings</h4>
-                            <ul>
-                                <li><strong>Timeouts:</strong> Prevent long-running commands from hanging</li>
-                                <li><strong>File Sandbox:</strong> Restrict file operations to safe areas</li>
-                                <li><strong>Command Validation:</strong> Validate commands before execution</li>
-                            </ul>
-                        </div>
-
-                        <div class="help-card">
-                            <h4>Cloud Settings</h4>
-                            <ul>
-                                <li><strong>GCS Backup:</strong> Store conversations in Google Cloud Storage</li>
-                                <li><strong>Auto-backup:</strong> Automatically save after conversations</li>
-                                <li><strong>Bucket Configuration:</strong> Choose your storage bucket</li>
-                            </ul>
+                        <div class="analytics-grid">
+                            <section class="surface-card">
+                                <div class="surface-head">
+                                    <h4>Conversation velocity</h4>
+                                </div>
+                                <div class="bar-series" id="conversation-chart"></div>
+                            </section>
+                            <section class="surface-card">
+                                <div class="surface-head">
+                                    <h4>Tool mix</h4>
+                                </div>
+                                <div class="bar-series" id="tool-chart"></div>
+                            </section>
+                            <section class="surface-card wide">
+                                <div class="surface-head">
+                                    <h4>Performance contour</h4>
+                                </div>
+                                <div class="line-grid" id="performance-chart"></div>
+                            </section>
+                            <section class="surface-card wide">
+                                <div class="surface-head">
+                                    <h4>Key insights</h4>
+                                </div>
+                                <div class="insights-list" id="insights-list"></div>
+                            </section>
                         </div>
                     </div>
 
-                    <!-- Troubleshooting -->
-                    <div class="help-section">
-                        <h3>🔧 Troubleshooting</h3>
-                        
-                        <div class="help-card">
-                            <h4>Common Issues</h4>
-                            <div class="troubleshooting-item">
-                                <strong>Problem:</strong> "Agent not responding"
-                                <br><strong>Solution:</strong> Check if the agent is initialized (green status dot) and try refreshing the page
+                    <div class="view-stage" id="settings-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Control surfaces</p>
+                                <h3>Runtime settings</h3>
                             </div>
-                            <div class="troubleshooting-item">
-                                <strong>Problem:</strong> "Tool execution failed"
-                                <br><strong>Solution:</strong> Check tool permissions and ensure commands are valid
-                            </div>
-                            <div class="troubleshooting-item">
-                                <strong>Problem:</strong> "GCS backup not working"
-                                <br><strong>Solution:</strong> Configure Google Cloud credentials and bucket name
+                            <div class="panel-actions">
+                                <button class="ghost-button" id="export-settings" type="button">Export config</button>
                             </div>
                         </div>
-
-                        <div class="help-card">
-                            <h4>Performance Tips</h4>
-                            <ul>
-                                <li>Use Gemini Flash for faster responses</li>
-                                <li>Limit conversation length for complex tasks</li>
-                                <li>Clear history periodically to improve performance</li>
-                                <li>Use appropriate timeouts for long-running operations</li>
-                            </ul>
+                        <div class="settings-grid">
+                            <section class="surface-card">
+                                <div class="surface-head"><h4>Model behavior</h4></div>
+                                <label class="field-label" for="model-select">Model</label>
+                                <select id="model-select">
+                                    <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+                                    <option value="gemini-2.5-pro-preview">Gemini 2.5 Pro</option>
+                                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                                </select>
+                                <label class="field-label" for="max-turns">Max turns</label>
+                                <input id="max-turns" type="range" min="5" max="50" value="20">
+                                <div class="range-copy" id="max-turns-display">20 turns</div>
+                                <label class="field-label" for="temperature">Creativity</label>
+                                <input id="temperature" type="range" min="0" max="100" value="70">
+                                <div class="range-copy" id="temperature-display">70%</div>
+                            </section>
+                            <section class="surface-card">
+                                <div class="surface-head"><h4>Execution boundaries</h4></div>
+                                <label class="field-label" for="shell-timeout">Shell timeout</label>
+                                <input id="shell-timeout" type="number" min="10" max="300" value="60">
+                                <label class="field-label" for="http-timeout">HTTP timeout</label>
+                                <input id="http-timeout" type="number" min="5" max="120" value="15">
+                                <label class="field-label" for="gui-api-key">GUI API key</label>
+                                <input id="gui-api-key" type="password" autocomplete="off" placeholder="Enter current ORACLE_API_KEY if required">
+                                <label class="field-label" for="log-level">Log level</label>
+                                <select id="log-level">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO" selected>INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                            </section>
+                            <section class="surface-card">
+                                <div class="surface-head"><h4>Cloud backup</h4></div>
+                                <label class="field-label" for="gcs-bucket">GCS bucket</label>
+                                <input id="gcs-bucket" type="text" placeholder="oracle-backups">
+                                <div class="checkbox-row">
+                                    <label><input id="enable-gcs-backup" type="checkbox"> Enable backup</label>
+                                    <label><input id="auto-backup" type="checkbox" checked> Auto backup</label>
+                                </div>
+                                <div class="checkbox-row">
+                                    <label><input id="enable-file-sandbox" type="checkbox" checked> File sandbox</label>
+                                    <label><input id="enable-debug" type="checkbox" checked> Debug traces</label>
+                                </div>
+                                <div class="checkbox-row">
+                                    <label><input id="enable-metrics" type="checkbox" checked> Metrics</label>
+                                </div>
+                            </section>
+                            <section class="surface-card">
+                                <div class="surface-head"><h4>Actions</h4></div>
+                                <div class="button-stack">
+                                    <button class="primary-button" id="save-settings" type="button">Save settings</button>
+                                    <button class="ghost-button" id="reset-settings" type="button">Reset defaults</button>
+                                </div>
+                                <p class="settings-note" id="settings-note">Protected reads and writes require the GUI API key when `ORACLE_API_KEY` is configured.</p>
+                            </section>
                         </div>
                     </div>
 
-                    <!-- Keyboard Shortcuts -->
-                    <div class="help-section">
-                        <h3>⌨️ Keyboard Shortcuts</h3>
-                        <div class="shortcuts-grid">
-                            <div class="shortcut-item">
-                                <kbd>Enter</kbd>
-                                <span>Send message</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <kbd>Shift + Enter</kbd>
-                                <span>New line in message</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <kbd>Ctrl + /</kbd>
-                                <span>Show keyboard shortcuts</span>
-                            </div>
-                            <div class="shortcut-item">
-                                <kbd>Esc</kbd>
-                                <span>Close panels</span>
+                    <div class="view-stage" id="help-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Operator guide</p>
+                                <h3>How to get leverage fast</h3>
                             </div>
                         </div>
+                        <div class="help-grid" id="help-grid"></div>
                     </div>
+                </section>
 
-                    <!-- Support -->
-                    <div class="help-section">
-                        <h3>💬 Support</h3>
-                        <div class="help-card">
-                            <h4>Get Help</h4>
-                            <p>If you need additional assistance:</p>
-                            <ul>
-                                <li>Check the <a href="http://localhost:8080/health" target="_blank">Health Status</a> for system information</li>
-                                <li>Review <a href="http://localhost:8080/metrics" target="_blank">Performance Metrics</a> for diagnostics</li>
-                                <li>Enable debug mode in Settings for detailed logs</li>
-                                <li>Clear conversation history if experiencing issues</li>
-                            </ul>
+                <aside class="intel-column">
+                    <section class="surface-card telemetry-card">
+                        <div class="surface-head">
+                            <h4>Live telemetry</h4>
                         </div>
-                    </div>
-                </div>
-            </div>
+                        <div class="telemetry-list">
+                            <div class="telemetry-item"><span>Connection</span><strong id="status-text">-</strong></div>
+                            <div class="telemetry-item"><span>Project</span><strong id="telemetry-project">-</strong></div>
+                            <div class="telemetry-item"><span>Model</span><strong id="telemetry-model">-</strong></div>
+                            <div class="telemetry-item"><span>Timestamp</span><strong id="telemetry-time">-</strong></div>
+                        </div>
+                    </section>
 
-            <!-- Tool Panel (Collapsible) -->
-            <div class="tool-panel" id="tool-panel">
-                <div class="tool-panel-header">
-                    <h3>Tool Execution</h3>
-                    <button class="btn-close-panel" id="btn-close-panel">×</button>
-                </div>
-                <div class="tool-panel-content" id="tool-panel-content">
-                    <div class="tool-placeholder">
-                        Select a tool from the sidebar to execute it manually
-                    </div>
-                </div>
+                    <section class="surface-card">
+                        <div class="surface-head">
+                            <h4>Activity stream</h4>
+                        </div>
+                        <div class="mini-feed" id="mini-activity-feed"></div>
+                    </section>
+
+                    <section class="surface-card">
+                        <div class="surface-head">
+                            <h4>Tool deck</h4>
+                        </div>
+                        <div class="tool-deck" id="tool-deck"></div>
+                    </section>
+                </aside>
             </div>
         </main>
     </div>
 
-    <!-- Toast Notifications -->
-    <div class="toast-container" id="toast-container"></div>
+    <aside class="tool-drawer" id="tool-panel" aria-hidden="true">
+        <div class="tool-drawer-header">
+            <div>
+                <p class="panel-kicker">Manual execution</p>
+                <h3 id="tool-panel-title">Tool runner</h3>
+            </div>
+            <button class="ghost-button" id="btn-close-panel" type="button">Close</button>
+        </div>
+        <div class="tool-drawer-content" id="tool-panel-content"></div>
+    </aside>
 
-    <!-- Loading Overlay -->
-    <div class="loading-overlay" id="loading-overlay">
-        <div class="spinner"></div>
-        <p>Oracle Agent is thinking...</p>
+    <div class="modal-shell" id="command-palette" aria-hidden="true">
+        <div class="modal-card palette-card">
+            <div class="palette-header">
+                <input id="command-search-input" type="text" placeholder="Search commands, views, and actions">
+                <button class="ghost-button" id="close-command-palette" type="button">Esc</button>
+            </div>
+            <div class="palette-list" id="command-results"></div>
+        </div>
+    </div>
+
+    <div class="modal-shell" id="session-modal" aria-hidden="true">
+        <div class="modal-card session-card">
+            <div class="surface-head">
+                <h4>Create a new session</h4>
+            </div>
+            <label class="field-label" for="new-session-name">Session name</label>
+            <input id="new-session-name" type="text" maxlength="80" placeholder="Incident review, build task, audit run...">
+            <div class="button-stack horizontal">
+                <button class="primary-button" id="create-session-confirm" type="button">Create session</button>
+                <button class="ghost-button" id="create-session-cancel" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+    <div class="loading-overlay" id="loading-overlay" hidden>
+        <div class="loading-card">
+            <div class="loading-orb"></div>
+            <div>
+                <p class="eyebrow">Inference in flight</p>
+                <h4>Oracle is thinking</h4>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

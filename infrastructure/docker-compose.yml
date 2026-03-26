@@ -5,8 +5,8 @@ services:
     container_name: oracle-mq-broker
     restart: always
     environment:
-      RABBITMQ_DEFAULT_USER: "admin"
-      RABBITMQ_DEFAULT_PASS: "oracle_pass_2026"
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_DEFAULT_USER:-admin}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_DEFAULT_PASS:?set RABBITMQ_DEFAULT_PASS in your environment or .env}"
     ports:
       - "5672:5672"   # AMQP
       - "15672:15672" # Management UI
@@ -19,9 +19,9 @@ services:
     container_name: oracle-result-store
     restart: always
     environment:
-      POSTGRES_USER: "oracle_admin"
-      POSTGRES_PASSWORD: "vault_password_2026"
-      POSTGRES_DB: "enterprise_oracle"
+      POSTGRES_USER: "${POSTGRES_USER:-oracle_admin}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in your environment or .env}"
+      POSTGRES_DB: "${POSTGRES_DB:-enterprise_oracle}"
     ports:
       - "5432:5432"
     volumes:

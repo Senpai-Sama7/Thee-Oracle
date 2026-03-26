@@ -36,12 +36,12 @@ import sys
 import json
 import sqlite3
 import subprocess
-import time
 import logging
-import urllib.request
-import urllib.error
+import urllib.parse
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, cast
+import requests
 from google import genai
 from google.genai import types
 from .gcs_storage import GCSStorageManager
@@ -102,8 +102,12 @@ class OracleConfig:
         self.shell_timeout = int(os.environ.get("ORACLE_SHELL_TIMEOUT", "60"))
         self.http_timeout = int(os.environ.get("ORACLE_HTTP_TIMEOUT", "15"))
         self.max_turns = int(os.environ.get("ORACLE_MAX_TURNS", "20"))
+        self.max_active_skills = int(os.environ.get("ORACLE_MAX_ACTIVE_SKILLS", "3"))
+        self.enable_skill_context = os.environ.get("ORACLE_ENABLE_SKILL_CONTEXT", "true").lower() == "true"
         self.db_path = self.project_root / "data" / "oracle_core.db"
-        self.mcp_config_path = self._resolve_project_path(os.environ.get("ORACLE_MCP_CONFIG", "config/mcp_servers.yaml"))
+        self.mcp_config_path = self._resolve_project_path(
+            os.environ.get("ORACLE_MCP_CONFIG", "config/mcp_servers.yaml")
+        )
         self.mcp_timeout: int = int(os.environ.get("ORACLE_MCP_TIMEOUT", "30"))
         self.skills_dir = self._resolve_project_path(os.environ.get("ORACLE_SKILLS_DIR", "skills/"))
 
@@ -309,7 +313,8 @@ class ToolExecutor:
         Returns the file path on success for downstream vision analysis.
         Uploads to GCS if configured for cloud storage.
         """
-        target = f"/tmp/oracle_vision_{int(time.time())}.png"
+        with tempfile.NamedTemporaryFile(prefix="oracle_vision_", suffix=".png", delete=False) as temp_file:
+            target = temp_file.name
 
         # Attempt 1: PIL (covers most environments without spawning a subprocess)
         try:
@@ -428,25 +433,34 @@ class ToolExecutor:
         and should be implemented as a separate tool or subprocess call.
         """
         try:
-            req = urllib.request.Request(url, method=method.upper())
-            req.add_header("User-Agent", "OracleAgent/1.0")
-            if headers:
-                for k, v in headers.items():
-                    req.add_header(k, v)
+            parsed = urllib.parse.urlsplit(url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                return {"success": False, "error": "Only absolute http(s) URLs are allowed"}
 
-            with urllib.request.urlopen(req, timeout=self.http_timeout) as resp:
-                body = resp.read().decode("utf-8", errors="replace")
-                cap = 8192
-                return {
-                    "success": True,
-                    "status": resp.status,
-                    "url": url,
-                    "content": body[:cap],
-                    "truncated": len(body) > cap,
-                }
-        except urllib.error.HTTPError as e:
-            return {"success": False, "status": e.code, "error": str(e)}
-        except urllib.error.URLError as e:
+            request_headers = {"User-Agent": "OracleAgent/1.0"}
+            if headers:
+                request_headers.update({str(key): str(value) for key, value in headers.items()})
+
+            response = requests.request(
+                method.upper(),
+                url,
+                headers=request_headers,
+                timeout=self.http_timeout,
+            )
+            response.raise_for_status()
+            body = response.text
+            cap = 8192
+            return {
+                "success": True,
+                "status": response.status_code,
+                "url": url,
+                "content": body[:cap],
+                "truncated": len(body) > cap,
+            }
+        except requests.HTTPError as e:
+            status_code = e.response.status_code if e.response is not None else None
+            return {"success": False, "status": status_code, "error": str(e)}
+        except requests.RequestException as e:
             return {"success": False, "error": str(e)}
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -606,7 +620,7 @@ class OracleAgent:
 
     # ── Generation config ─────────────────────────────────────────────────
 
-    def _build_config(self) -> types.GenerateContentConfig:
+    def _build_config(self, system_instruction: str | None = None) -> types.GenerateContentConfig:
         """
         Build Generation config with thinking level and tools.
         """
@@ -692,10 +706,22 @@ class OracleAgent:
                 ),
             ]
 
-        return types.GenerateContentConfig(
+        config = types.GenerateContentConfig(
             tools=[types.Tool(function_declarations=function_declarations)],
             thinking_config=types.ThinkingConfig(include_thoughts=True),
         )
+        if system_instruction:
+            config.system_instruction = system_instruction
+        return config
+
+    def _build_skill_system_instruction(self, prompt: str) -> str | None:
+        """Build a compact skill-context system instruction for the current request."""
+        if not self.cfg.enable_skill_context:
+            return None
+        if not self._tool_registry:
+            return None
+        skill_context = self._tool_registry.build_skill_prompt_context(prompt, max_skills=self.cfg.max_active_skills)
+        return skill_context or None
 
     # ── Model Router Integration (Oracle 5.0 Phase 1) ─────────────────────
 
@@ -799,6 +825,7 @@ class OracleAgent:
         self._model_router.session_id = session_id
 
         # Build messages
+        system_instruction = self._build_skill_system_instruction(prompt)
         raw = self.db.load_history(session_id)
         if raw:
             history = HistorySerializer.from_dicts(raw)
@@ -806,6 +833,9 @@ class OracleAgent:
             messages.append({"role": "user", "content": prompt})
         else:
             messages = [{"role": "user", "content": prompt}]
+
+        if system_instruction:
+            messages = [{"role": "system", "content": system_instruction}, *messages]
 
         # Get tools
         tools = self._get_tools_for_router()
@@ -959,7 +989,7 @@ class OracleAgent:
         else:
             history = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
 
-        config = self._build_config()
+        config = self._build_config(self._build_skill_system_instruction(prompt))
 
         for turn_idx in range(1, self.cfg.max_turns + 1):
             log.info("[%s] Turn %d — generating", session_id, turn_idx)

@@ -4,14 +4,18 @@ Oracle Agent GUI Test Suite
 Tests all GUI features, functions, and integration with Oracle Agent
 """
 
+import os
 import time
 import socketio
 import requests
+
+REQUEST_TIMEOUT = 10
 
 
 class GUITester:
     def __init__(self, base_url="http://localhost:5001"):
         self.base_url = base_url
+        self.api_key = os.environ.get("ORACLE_API_KEY", "").strip()
         self.sio = socketio.Client()
         self.test_results = []
         self.session_id = f"test-session-{int(time.time())}"
@@ -58,6 +62,12 @@ class GUITester:
             print("🗑️ History cleared")
             self.test_results.append(("History Clear", "PASS"))
 
+    def build_headers(self):
+        headers = {}
+        if self.api_key:
+            headers["X-API-Key"] = self.api_key
+        return headers
+
     def run_test(self, test_name, test_func):
         """Run a single test and record the result."""
         print(f"\n🧪 Testing: {test_name}")
@@ -76,12 +86,16 @@ class GUITester:
     def test_api_endpoints(self):
         """Test REST API endpoints."""
         # Test status endpoint
-        response = requests.get(f"{self.base_url}/api/status")
+        response = requests.get(f"{self.base_url}/api/status", timeout=REQUEST_TIMEOUT)
         if response.status_code == 200 and response.json().get("initialized"):
             return True
 
         # Test config endpoint
-        response = requests.get(f"{self.base_url}/api/config")
+        response = requests.get(
+            f"{self.base_url}/api/config",
+            headers=self.build_headers(),
+            timeout=REQUEST_TIMEOUT,
+        )
         if response.status_code == 200:
             config = response.json()
             if "model_id" in config and "max_turns" in config:
@@ -92,7 +106,10 @@ class GUITester:
     def test_websocket_connection(self):
         """Test WebSocket connection."""
         try:
-            self.sio.connect(self.base_url)
+            connect_kwargs = {}
+            if self.api_key:
+                connect_kwargs["auth"] = {"apiKey": self.api_key}
+            self.sio.connect(self.base_url, **connect_kwargs)
             time.sleep(1)
             return self.sio.connected
         except Exception:

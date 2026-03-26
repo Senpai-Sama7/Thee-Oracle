@@ -175,7 +175,7 @@ class MCPClient:
                         "transport": "stdio",
                         "command": "npx",
                         "args": ["-y", "@modelcontextprotocol/server-github"],
-                        "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"},
+                        "env": {},
                         "timeout": 30,
                         "disabled": True,
                     },

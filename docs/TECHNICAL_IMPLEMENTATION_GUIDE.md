@@ -1,5 +1,7 @@
 # Oracle Agent - Technical Implementation Guide
 
+> Use `README.md` and `AGENTS.md` as the current source of truth. This guide is supportive context and may describe earlier implementation phases.
+
 ## 🎯 Development & Deployment Reference
 
 This guide provides technical details for developers and system architects working with the Oracle Agent platform v5.0.
@@ -20,9 +22,9 @@ python3 main.py
 docker-compose -f infrastructure/docker-compose.yml up -d
 
 # Development tools (Strict Verification)
-mypy src/oracle/
+mypy src/oracle orchestrator.py
 ruff check .
-pytest tests/
+pytest -q
 ```
 
 ---
@@ -128,9 +130,12 @@ The platform exposes a health check service on port 8080.
 ## 🔍 Troubleshooting
 
 ### Missing Dependencies
-The platform relies on several specialized libraries. Ensure the virtual environment is updated:
+There is no root `requirements.txt` in this workspace. Use the provisioned environment or install the imports required for the component you plan to run. GUI-only extras live in `gui/requirements.txt`.
+
+Useful checks:
 ```bash
-pip install -r requirements.txt
+python3 -m compileall src/oracle personal_agent email_worker interfaces gui skills orchestrator.py main.py demo.py
+python3 -c "import gui.app"
 ```
 
 ### Authentication Errors
@@ -142,5 +147,4 @@ Ensure `GCP_PROJECT_ID` is set correctly in `.env`.
 
 ---
 
-**Oracle Agent Platform v5.0** - Engineering Excellence in AI Orchestration. 🚀
-echnical Implementation Guide** - Complete reference for developers and operators. 🚀
+**Oracle Agent Platform v5.0** - Technical reference for developers and operators.

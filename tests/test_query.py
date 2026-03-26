@@ -2,13 +2,26 @@ import pika
 import uuid
 import json
 import sys
+import os
+
+
+RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "localhost")
+RABBITMQ_USER = os.environ.get("RABBITMQ_USER", "")
+RABBITMQ_PASS = os.environ.get("RABBITMQ_PASS", "")
+
+
+def require_secret(name, value):
+    if not value:
+        raise RuntimeError(f"{name} must be set before running this helper")
 
 
 class OracleClient:
     def __init__(self):
         # Establish connection to the synchronized RabbitMQ container
-        credentials = pika.PlainCredentials("admin", "oracle_pass_2026")
-        parameters = pika.ConnectionParameters(host="localhost", credentials=credentials)
+        require_secret("RABBITMQ_USER", RABBITMQ_USER)
+        require_secret("RABBITMQ_PASS", RABBITMQ_PASS)
+        credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+        parameters = pika.ConnectionParameters(host=RABBITMQ_HOST, credentials=credentials)
 
         try:
             self.connection = pika.BlockingConnection(parameters)

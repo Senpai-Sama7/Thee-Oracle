@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/mcp_client.py
+# hypothesis_version: 6.151.9
+
+['-y', '30', 'ORACLE_MCP_CONFIG', 'ORACLE_MCP_TIMEOUT', '_sse_contexts', '_stdio_contexts', 'args', 'command', 'description', 'disabled', 'env', 'error', 'filesystem', 'github', 'inputSchema', 'name', 'npx', 'result', 'servers', 'sse', 'stdio', 'success', 'timeout', 'transport', 'url', 'w', '~/.oracle/workspace']

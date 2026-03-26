@@ -1,185 +1,149 @@
-# 🚀 Oracle Agent v5.0-hardened - Enterprise AI Agent Platform
+# Oracle Agent Platform
 
-**Oracle Agent** is a production-grade autonomous AI orchestration system implementing a hardened ReAct (Reason + Act) pattern with Google Gemini integration. This is a mature, enterprise-ready platform with 125+ passing tests and 100% `mypy --strict` compliance.
+Oracle Agent is a Python AI orchestration workspace centered on a hardened `OracleAgent` ReAct loop, plus sibling services for webhook handling, a personal-agent flow, a RabbitMQ-backed email worker, and a Flask GUI.
 
-## 🏆 Key Features
+This repository is not uniformly polished. The maintained runtime path is solid and currently verified, but the tree also contains older prototype modules and historical docs. Use this README, [AGENTS.md](./AGENTS.md), and [gui/README.md](./gui/README.md) as the current entry points.
 
-### 🖥️ **Exclusive Real-Time GUI**
-- **Only AI agent system** with professional web interface
-- Luxury design with glassmorphism and advanced animations
-- Real-time dashboard, analytics, and session management
-- Professional monitoring and operational visibility
+## Current Status
 
-### 🛡️ **Enterprise-Grade Security (91% Score)**
-- Comprehensive security audit with 99.9% vulnerability reduction
-- Production-ready authentication and authorization
-- Input validation, sanitization, and rate limiting
-- Security-hardened architecture with circuit breakers
+- `pytest -q` -> `140 passed, 2 warnings`
+- `ruff check .` -> clean
+- `mypy src/oracle orchestrator.py` -> clean under the repo's strict mypy config
+- `python3 demo.py` -> passes
+- `python3 -m compileall src/oracle personal_agent email_worker interfaces gui skills orchestrator.py main.py demo.py` -> passes
 
-### 🔄 **Multi-LLM Failover Architecture**
-- Automatic failover across Gemini, OpenAI, Anthropic, Ollama
-- Circuit breakers and comprehensive error handling
-- Transparent model switching with reliability guarantees
+The two pytest warnings are external `google._upb._message` deprecation warnings on Python 3.13.
 
-### 📊 **Complete Enterprise Feature Set**
-- **Workflow Engine**: Enterprise automation and orchestration
-- **Agent Collaboration**: Multi-agent coordination framework
-- **Code Generation**: Multi-language code generation with quality scoring
-- **Plugin System**: Extensible architecture for custom capabilities
-- **Integration Framework**: Pre-built integrations for popular services
+## What Is Here
 
-### 🏢 **Production-Ready Operations**
-- 125+ passing tests with 100% type safety
-- Comprehensive monitoring and analytics dashboard
-- Session management and persistence
-- Health monitoring and alerting
-- Real-time operational visibility
-
-## 📋 Quick Start
-
-### Prerequisites
-- Python 3.11+
-- Google Cloud project with Vertex AI enabled
-- GCP credentials configured
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/oracle-agent/oracle-agent.git
-cd oracle-agent
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your GCP credentials
+```text
+src/oracle/                Core OracleAgent runtime, router, MCP, skills, health check
+orchestrator.py            Shared task, persistence, circuit-breaker, metrics primitives
+main.py                    Interactive CLI wrapper plus health-check bootstrap
+demo.py                    Credential-light smoke demo for tools and persistence
+src/oracle/main.py         FastAPI webhook/chat wrapper around OracleAgent
+personal_agent/main.py     Separate FastAPI service with its own tool flow
+email_worker/main.py       RabbitMQ consumer that sends queued email via SMTP
+gui/                       Flask + Socket.IO web UI
+skills/                    Dynamic skill modules
+tests/                     Maintained automated test suite
+docs/                      Mixed current and historical documentation
 ```
 
-### Running Oracle Agent
+## Skill Architecture
 
-#### Production Mode (with GCP)
+The repo now supports two skill formats:
+
+- legacy flat Python skills in `skills/*.py`
+- Claude-style package skills in `skills/<skill-name>/SKILL.md`
+
+Package skills can be instruction-only or tool-backed. When a request comes in, Oracle discovers the skill catalog, scores skills against the prompt using name/description/triggers, and injects the top matching `SKILL.md` instructions into the system prompt. If a package also has `skill.py` or `__init__.py`, its `TOOLS` are loaded into the existing `ToolRegistry` path alongside built-ins and MCP tools.
+
+See [skills/README.md](./skills/README.md) for the on-disk format and [skills/code-review-guidance/SKILL.md](./skills/code-review-guidance/SKILL.md) for a package-style example.
+
+## Quick Start
+
+### 1. Configure the environment
+
+Create a `.env` file from [.env.example](./.env.example) and set the variables for the components you plan to run.
+
+Important notes:
+
+- `ORACLE_PROJECT_ROOT` is now honored by `OracleConfig` and defines the file sandbox root.
+- `GCP_PROJECT_ID` is required for live Gemini/Vertex AI calls.
+- `RABBITMQ_URL` is required for `personal_agent` and `email_worker`; those paths now fail closed if it is missing.
+- The checked-in workspace does not include a root `requirements.txt`. `pyproject.toml` only configures tooling, and `gui/requirements.txt` contains GUI-specific packages. Use the provisioned environment or install dependencies for the component you want to run.
+
+### 2. Run the component you need
+
+Demo mode:
+
+```bash
+python3 demo.py
+```
+
+Interactive CLI:
+
 ```bash
 python3 main.py
 ```
 
-#### Demo Mode (no credentials required)
+Oracle FastAPI webhook wrapper:
+
 ```bash
-export ORACLE_DEMO_MODE=true
-python3 demo.py
+python3 -m uvicorn src.oracle.main:app --host 0.0.0.0 --port 8000
 ```
 
-#### GUI Mode
+Personal-agent service:
+
 ```bash
-cd gui
-python3 launch.py
-# Access at http://localhost:5001
+python3 -m uvicorn personal_agent.main:app --host 0.0.0.0 --port 8001
 ```
 
-## 🏗️ Architecture
-
-### Core Components
-
-- **OracleAgent** (`src/oracle/agent_system.py`) - Main ReAct loop orchestrator
-- **ToolExecutor** (`src/oracle/agent_system.py`) - Sandboxed tool execution
-- **ModelRouter** (`src/oracle/model_router.py`) - Multi-LLM support with failover
-- **ToolRegistry** (`src/oracle/tool_registry.py`) - Unified tool dispatch
-- **SkillLoader** (`src/oracle/skill_loader.py`) - Dynamic skill loading
-
-### New Enterprise Features
-
-- **WorkflowEngine** (`src/oracle/workflow_engine.py`) - Enterprise automation
-- **AgentCollaboration** (`src/oracle/agent_collaboration.py`) - Multi-agent coordination
-- **CodeGenerator** (`src/oracle/code_generator.py`) - Multi-language code generation
-- **PluginManager** (`src/oracle/plugin_system.py`) - Extensible plugin architecture
-- **IntegrationFramework** (`src/oracle/integration_framework.py`) - Service integrations
-
-### Security Layer
-
-- **Authentication** - API key-based authentication
-- **Authorization** - Role-based access control
-- **Input Validation** - Comprehensive input sanitization
-- **Rate Limiting** - DDoS protection
-- **Security Headers** - Enterprise-grade HTTP security
-
-### 4. Resilience & Reliability
-
-- **Circuit Breakers**: Advanced protection for Vertex AI and RabbitMQ connections.
-- **Result Store**: SQLite-backed audit trails for every agent interaction.
-- **WAL Mode Persistence**: High-performance history storage.
-
----
-
-## 🛠️ Developer Reference
-
-### Core Commands
+Email worker:
 
 ```bash
-# Verify Type Safety (Strict)
-mypy src/oracle/
+python3 email_worker/main.py
+```
 
-# Run All Tests (125+ tests passing)
-export PYTHONPATH=$(pwd):$(pwd)/src
-pytest tests/
+GUI:
 
-# Linting & Formatting
+```bash
+python3 gui/launch.py
+```
+
+The GUI defaults to `http://127.0.0.1:5001` and can be moved with `ORACLE_GUI_HOST` / `ORACLE_GUI_PORT`.
+
+## Verification Commands
+
+```bash
+pytest -q
 ruff check .
-ruff format .
+mypy src/oracle orchestrator.py
+python3 demo.py
+python3 -m compileall src/oracle personal_agent email_worker interfaces gui skills orchestrator.py main.py demo.py
 ```
 
-### Extending the Agent
+Focused reruns:
 
-To add new capabilities, create a new skill in the `skills/` directory:
-
-```python
-# skills/my_custom_skill.py
-TOOLS = [
-    {
-        "name": "my_tool",
-        "description": "Does something useful",
-        "parameters": { ... },
-        "handler": my_callable
-    }
-]
+```bash
+pytest -q tests/test_http_entrypoints.py
+pytest -q tests/test_runtime_config.py
+pytest -q tests/test_tool_execution_flow.py
 ```
 
----
+## Architecture Notes
 
-## 🔒 Security Invariants
+The strongest code paths are:
 
-- **Path Sandboxing**: All file operations are restricted to `ORACLE_PROJECT_ROOT`.
-- **No Shell Injection**: `shell_execute` uses explicit list form (`["bash", "-c", cmd]`).
-- **Pydantic Serialization**: History is stored as JSON-safe dicts, avoiding `pickle` vulnerabilities.
+- [src/oracle/agent_system.py](./src/oracle/agent_system.py)
+- [src/oracle/model_router.py](./src/oracle/model_router.py)
+- [src/oracle/tool_registry.py](./src/oracle/tool_registry.py)
+- [src/oracle/skill_loader.py](./src/oracle/skill_loader.py)
+- [src/oracle/mcp_client.py](./src/oracle/mcp_client.py)
+- [orchestrator.py](./orchestrator.py)
 
----
+Areas that still behave more like prototypes than hardened runtime code:
 
-## 📊 Monitoring
+- `src/oracle/workflow_engine.py`
+- `src/oracle/plugin_system.py`
+- `src/oracle/integration_framework.py`
+- `src/oracle/agent_collaboration.py`
+- `src/oracle/code_generator.py`
+- parts of `src/oracle/agent_graph.py`
 
-- **Health Check**: `GET /health` on port 8080.
-- **Metrics**: `GET /metrics` providing Prometheus-style uptime and database stats.
-- **Audit Logs**: Stored in `data/oracle_core.db`.
+## Security and Runtime Contracts
 
----
+- File operations are sandboxed to `ORACLE_PROJECT_ROOT`.
+- Built-in shell execution uses `["bash", "-c", cmd]`, not `shell=True`.
+- Session history is stored as JSON-safe data in SQLite, not with `pickle`.
+- `personal_agent/main.py` and `email_worker/main.py` no longer embed RabbitMQ credentials.
+- `gui/app.py` works even without `flask_talisman` or `flask_limiter`; it logs warnings and falls back to no-op wrappers.
 
-**Oracle Agent: The Future of Autonomous Orchestration. 🚀**
-acle solves problems 5. **Experiment**: Try different ways of asking questions
+## Documentation Map
 
-## 📞 Support
+- [AGENTS.md](./AGENTS.md): code-grounded architecture and maintenance guide
+- [docs/README.md](./docs/README.md): documentation index and trust order
+- [gui/README.md](./gui/README.md): GUI-specific setup and API notes
 
-If you encounter issues:
-
-1. Check this manual first
-2. Look at error messages carefully
-3. Try rephrasing your request
-4. Restart Oracle if needed
-
----
-
-**Oracle Agent is here to help you work smarter, not harder! 🚀**
-# Thee-Oracle
-# Thee-Oracle
+Many older files in `docs/` describe earlier implementation plans or aspirational features. Cross-check them against the code before relying on them for changes.

@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/safe_expression.py
+# hypothesis_version: 6.151.9
+
+['abs', 'all', 'any', 'bool', 'eval', 'float', 'int', 'len', 'max', 'min', 'str', 'sum']

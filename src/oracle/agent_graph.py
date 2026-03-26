@@ -1,4 +1,3 @@
-import ast
 import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -7,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from .agent_system import PersistenceLayer
 from .a2a_protocol import A2AMessage
+from .safe_expression import SAFE_FUNCTIONS, evaluate_condition
 
 
 @dataclass
@@ -157,86 +157,9 @@ class WorkflowEngine:
             "True": True,
             "False": False,
             "None": None,
-            "int": int,
-            "float": float,
-            "str": str,
-            "bool": bool,
-            "len": len,
-            "abs": abs,
-            "min": min,
-            "max": max,
-            "sum": sum,
-            "any": any,
-            "all": all,
         }
         safe_context.update(variables)
-
-        try:
-            literal_value = ast.literal_eval(expression)
-        except (ValueError, SyntaxError):
-            literal_value = None
-        else:
-            return bool(literal_value)
-
-        tree = ast.parse(expression, mode="eval")
-        allowed_names = set(safe_context.keys())
-        allowed_calls = {"int", "float", "str", "bool", "len", "abs", "min", "max", "sum", "any", "all"}
-        allowed_nodes = (
-            ast.Expression,
-            ast.BoolOp,
-            ast.BinOp,
-            ast.UnaryOp,
-            ast.Compare,
-            ast.Call,
-            ast.Name,
-            ast.Load,
-            ast.Constant,
-            ast.List,
-            ast.Tuple,
-            ast.Set,
-            ast.Dict,
-            ast.Subscript,
-            ast.Slice,
-            ast.Index,
-            ast.And,
-            ast.Or,
-            ast.Not,
-            ast.USub,
-            ast.UAdd,
-            ast.Add,
-            ast.Sub,
-            ast.Mult,
-            ast.Div,
-            ast.FloorDiv,
-            ast.Mod,
-            ast.Pow,
-            ast.Eq,
-            ast.NotEq,
-            ast.Lt,
-            ast.LtE,
-            ast.Gt,
-            ast.GtE,
-            ast.In,
-            ast.NotIn,
-            ast.Is,
-            ast.IsNot,
-        )
-
-        for tree_node in ast.walk(tree):
-            if not isinstance(tree_node, allowed_nodes):
-                raise ValueError(f"Unsafe syntax: {type(tree_node).__name__}")
-
-            if isinstance(tree_node, ast.Name) and tree_node.id not in allowed_names:
-                raise ValueError(f"Unsafe variable access: {tree_node.id}")
-
-            if isinstance(tree_node, ast.Call):
-                if not isinstance(tree_node.func, ast.Name):
-                    raise ValueError("Only direct builtin calls are allowed")
-                if tree_node.func.id not in allowed_calls:
-                    raise ValueError(f"Unsafe function call: {tree_node.func.id}")
-
-        compiled = compile(tree, "<workflow_condition>", "eval")
-        return bool(eval(compiled, {"__builtins__": {}}, safe_context))
+        return evaluate_condition(expression, safe_context, SAFE_FUNCTIONS)
 
     async def run_workflow(self, definition: WorkflowDefinition) -> WorkflowResult:
         self._active_workflows[definition.workflow_id] = WorkflowStatus.RUNNING

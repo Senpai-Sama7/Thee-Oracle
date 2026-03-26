@@ -399,10 +399,24 @@ async def handle_input(
 # ---------------------------------------------------------------------------
 
 try:
-    from fastapi import FastAPI, Request, HTTPException
+    from fastapi import Depends, FastAPI, Request, HTTPException
     from fastapi.responses import JSONResponse, PlainTextResponse
+    from fastapi.security.api_key import APIKeyHeader, APIKeyQuery
 
     app = FastAPI(title="Personal Agent", version="1.0.0")
+    API_KEY_QUERY = APIKeyQuery(name="api_key", auto_error=False)
+    API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+    async def require_api_key(
+        api_key_query: str | None = Depends(API_KEY_QUERY),
+        api_key_header: str | None = Depends(API_KEY_HEADER),
+    ) -> None:
+        configured_key = os.environ.get("PERSONAL_AGENT_API_KEY", "").strip()
+        if not configured_key:
+            return
+        if api_key_query == configured_key or api_key_header == configured_key:
+            return
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
 
     @app.get("/health")
     async def health() -> JSONResponse:
@@ -420,7 +434,7 @@ try:
         return PlainTextResponse(_exporter.export(metrics), media_type="text/plain; version=0.0.4")
 
     @app.post("/webhook")
-    async def webhook(request: Request) -> JSONResponse:
+    async def webhook(request: Request, _: None = Depends(require_api_key)) -> JSONResponse:
         """Dialogflow CX / Agent Builder fulfillment endpoint."""
         body = await request.json()
         user_input: str = body.get("text", "")
@@ -442,7 +456,7 @@ try:
         )
 
     @app.post("/chat")
-    async def chat(request: Request) -> JSONResponse:
+    async def chat(request: Request, _: None = Depends(require_api_key)) -> JSONResponse:
         """Direct conversational endpoint."""
         body = await request.json()
         message: str = body.get("message", "")
@@ -469,7 +483,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "personal_agent.main:app",
-        host=os.environ.get("HOST", "0.0.0.0"),
+        host=os.environ.get("HOST", "127.0.0.1"),
         port=int(os.environ.get("PORT", "8000")),
         reload=os.environ.get("RELOAD", "false").lower() == "true",
     )

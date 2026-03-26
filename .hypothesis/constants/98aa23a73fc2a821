@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/workflow_engine.py
+# hypothesis_version: 6.151.9
+
+['-lc', 'False', 'GET', 'None', 'True', 'api', 'bash', 'command', 'completed', 'completed_at', 'condition', 'context', 'created_at', 'data', 'decision', 'default_path', "echo 'Hello World'", 'error', 'failed', 'false', 'false_path', 'http', 'https', 'id', 'method', 'name', 'next', 'pending', 'result', 'results', 'returncode', 'running', 'shell', 'started_at', 'status', 'status_code', 'stderr', 'stdout', 'steps', 'task', 'true', 'true_path', 'type', 'url', 'workflow_id']

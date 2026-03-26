@@ -17,7 +17,7 @@ Retry strategy
 
 Environment variables
 ---------------------
-RABBITMQ_URL        amqp://admin:pass@host:5672/   (default: local dev creds)
+RABBITMQ_URL        Required AMQP URL for RabbitMQ connectivity
 EMAIL_QUEUE         queue to consume (default: email_tasks)
 DLX_QUEUE           dead-letter queue name (default: email_tasks.dlq)
 SMTP_HOST           SMTP server hostname
@@ -57,7 +57,6 @@ logging.basicConfig(
 # Config
 # ---------------------------------------------------------------------------
 
-RABBITMQ_URL = os.environ.get("RABBITMQ_URL", "amqp://admin:oracle_pass_2026@localhost:5672/")
 EMAIL_QUEUE = os.environ.get("EMAIL_QUEUE", "email_tasks")
 DLX_QUEUE = os.environ.get("DLX_QUEUE", "email_tasks.dlq")
 WORKER_DB = os.environ.get("WORKER_DB", "data/personal_agent/agent_state.db")
@@ -77,6 +76,11 @@ _conn.execute("PRAGMA journal_mode=WAL")
 _conn.execute("PRAGMA synchronous=NORMAL")
 _conn.row_factory = sqlite3.Row
 result_store = ResultStore(_conn)
+
+
+def _get_rabbitmq_url() -> str | None:
+    url = os.environ.get("RABBITMQ_URL", "").strip()
+    return url or None
 
 
 class _TaskStore:
@@ -264,6 +268,11 @@ def start_worker() -> None:
     Reconnects on AMQP errors with exponential backoff (2s → 64s).
     Exits cleanly on KeyboardInterrupt.
     """
+    rabbitmq_url = _get_rabbitmq_url()
+    if rabbitmq_url is None:
+        log.error("rabbitmq_url_missing")
+        return
+
     import pika  # type: ignore[import]
     from pika.exceptions import AMQPConnectionError, ConnectionClosedByBroker
 
@@ -272,8 +281,8 @@ def start_worker() -> None:
 
     while True:
         try:
-            log.info("connecting_to_rabbitmq", extra={"url": RABBITMQ_URL.split("@")[-1]})
-            params = pika.URLParameters(RABBITMQ_URL)
+            log.info("connecting_to_rabbitmq", extra={"url": rabbitmq_url.split("@")[-1]})
+            params = pika.URLParameters(rabbitmq_url)
             params.heartbeat = 600
             params.blocked_connection_timeout = 30
             connection = pika.BlockingConnection(params)
