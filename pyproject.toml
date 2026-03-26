@@ -45,4 +45,4 @@ filterwarnings = [
 
 [tool.vercel]
 type = "python"
-entrypoint = "api/app.py"
+entrypoint = "app.py"
