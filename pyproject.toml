@@ -1,6 +1,6 @@
 [project]
 name = "oracle-agent-vercel"
-version = "5.0.0-hardened"
+version = "5.0.0"
 description = "Oracle Agent - Enterprise AI Agent Platform on Vercel"
 requires-python = ">=3.11"
 
