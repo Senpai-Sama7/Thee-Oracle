@@ -46,5 +46,10 @@ def status():
         "features": ["workflow_engine", "agent_collaboration", "code_generation"]
     })
 
+# Vercel serverless handler
+def handler(environ, start_response):
+    """WSGI handler for Vercel."""
+    return app(environ, start_response)
+
 if __name__ == '__main__':
     app.run(debug=True)
