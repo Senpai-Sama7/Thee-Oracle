@@ -1,0 +1,73 @@
+# Model Chain Configuration
+# Defines the priority order of LLM providers with automatic failover
+#
+# Environment variables can be referenced with ${VAR_NAME} syntax
+# Providers are tried in the order listed (priority field is optional)
+
+model_chain:
+  # Primary: Google Gemini via Vertex AI
+  - provider: gemini
+    model: gemini-2.0-flash-exp
+    project_id: ${GCP_PROJECT_ID}
+    location: ${GCP_LOCATION:-us-central1}
+    priority: 1
+
+  # Secondary: OpenAI GPT-4o
+  - provider: openai
+    model: gpt-4o
+    api_key: ${OPENAI_API_KEY}
+    # Optional: custom base URL for OpenAI-compatible APIs
+    # base_url: https://api.openai.com/v1
+    priority: 2
+
+  # Tertiary: Anthropic Claude
+  - provider: anthropic
+    model: claude-3-5-sonnet-20241022
+    api_key: ${ANTHROPIC_API_KEY}
+    priority: 3
+
+  # Fallback: Local Ollama instance
+  - provider: ollama
+    model: llama3.1
+    base_url: http://localhost:11434
+    priority: 4
+
+# Health check configuration
+health_check_interval: 30  # seconds
+
+# Failover configuration
+failover_timeout_ms: 5000  # max time to wait before trying next provider
+
+# Cost optimization (optional)
+cost_optimization:
+  # Budget limits
+  daily_budget_usd: 10.0
+  monthly_budget_usd: 100.0
+  
+  # Provider preferences by task type
+  task_routing:
+    # Use cheaper models for simple tasks
+    quick_questions: gemini-2.0-flash-exp  # Free tier
+    code_generation: gpt-4o
+    complex_reasoning: claude-3-5-sonnet-20241022
+    local_privacy: llama3.1  # Local, no data leaves machine
+
+# Provider-specific defaults
+defaults:
+  gemini:
+    temperature: 0.7
+    max_tokens: 8192
+    thinking_level: medium  # low | medium | high (Gemini 2.5 Pro only)
+  
+  openai:
+    temperature: 0.7
+    max_tokens: 4096
+    top_p: 0.9
+  
+  anthropic:
+    temperature: 0.7
+    max_tokens: 4096
+  
+  ollama:
+    temperature: 0.8
+    max_tokens: 4096

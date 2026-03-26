@@ -1,0 +1,88 @@
+# Oracle MCP Server Configuration
+# Copy this file to config/mcp_servers.yaml and customize as needed
+#
+# Environment variables:
+#   ORACLE_MCP_CONFIG - Path to this file (default: config/mcp_servers.yaml)
+#   ORACLE_MCP_TIMEOUT - Default timeout in seconds (default: 30)
+
+servers:
+  # Example: Filesystem access via MCP
+  - name: filesystem
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "~/.oracle/workspace"
+    env: {}
+    timeout: 30
+    disabled: false
+
+  # Example: GitHub integration via MCP
+  - name: github
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-github"
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_TOKEN}
+    timeout: 30
+    disabled: true  # Enable by setting to false and configuring GITHUB_TOKEN
+
+  # Example: PostgreSQL access via MCP
+  - name: postgres
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-postgres"
+      - "postgresql://localhost/oracle_db"
+    env: {}
+    timeout: 30
+    disabled: true
+
+  # Example: Puppeteer browser automation via MCP
+  - name: puppeteer
+    transport: stdio
+    command: npx
+    args:
+      - "-y"
+      - "@modelcontextprotocol/server-puppeteer"
+    env: {}
+    timeout: 60
+    disabled: true
+
+  # Example: SSE transport (for remote MCP servers)
+  # - name: remote-server
+  #   transport: sse
+  #   url: http://localhost:3000/sse
+  #   timeout: 30
+  #   disabled: true
+
+# Configuration Notes:
+#
+# Required fields per server:
+#   - name: Unique identifier for the server
+#   - transport: "stdio" or "sse"
+#   - For stdio: command (and optionally args)
+#   - For sse: url
+#
+# Optional fields:
+#   - env: Environment variables for the server process
+#   - timeout: Tool call timeout in seconds (default: 30)
+#   - disabled: Set to true to skip this server (default: false)
+#
+# Environment Variable Expansion:
+#   Values in the env map can reference environment variables:
+#     env:
+#       API_KEY: ${API_KEY}
+#
+# Tool Name Conflicts:
+#   If an MCP tool name conflicts with a built-in tool or another MCP tool,
+#   it will be prefixed with the server name: {server}__{tool}
+#
+# Security:
+#   - Keep this file out of version control if it contains secrets
+#   - Use environment variables for sensitive data
+#   - MCP tools run with the same permissions as Oracle Agent

@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/mcp_registry.py
+# hypothesis_version: 6.151.9
+
+['$ref', 'additionalProperties', 'allOf', 'anyOf', 'array', 'boolean', 'description', 'enum', 'error', 'inputSchema', 'integer', 'items', 'name', 'not', 'null', 'number', 'object', 'oneOf', 'properties', 'required', 'string', 'success', 'type']

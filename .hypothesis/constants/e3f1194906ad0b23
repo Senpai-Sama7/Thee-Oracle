@@ -1,0 +1,4 @@
+# file: /usr/lib/python3/dist-packages/websockets/protocol.py
+# hypothesis_version: 6.151.9
+
+['< %s', '< EOF', '= connection is %s', '> %s', '> EOF', 'Protocol', 'SEND_EOF', 'Side', 'State', 'parser failed']

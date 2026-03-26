@@ -1,0 +1,32 @@
+services:
+  # Reliable Postal Service (Message Queue)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: oracle-mq-broker
+    restart: always
+    environment:
+      RABBITMQ_DEFAULT_USER: "admin"
+      RABBITMQ_DEFAULT_PASS: "oracle_pass_2026"
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  # Perfect Filing Cabinet (Result Store Database)
+  postgres:
+    image: postgres:16-alpine
+    container_name: oracle-result-store
+    restart: always
+    environment:
+      POSTGRES_USER: "oracle_admin"
+      POSTGRES_PASSWORD: "vault_password_2026"
+      POSTGRES_DB: "enterprise_oracle"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  rabbitmq_data:
+  postgres_data:

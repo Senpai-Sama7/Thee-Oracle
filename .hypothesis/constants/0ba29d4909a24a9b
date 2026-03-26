@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/skill_loader.py
+# hypothesis_version: 6.151.9
+
+['*.py', 'ORACLE_SKILLS_DIR', 'Reloading skills...', 'TOOLS', 'description', 'handler', 'name', 'parameters', 'setup', 'skills/', 'teardown']

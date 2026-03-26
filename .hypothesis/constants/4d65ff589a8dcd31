@@ -1,0 +1,4 @@
+# file: /usr/lib/python3/dist-packages/aiodns/__init__.py
+# hypothesis_version: 6.151.9
+
+[0.1, '3.2.0', 'A', 'AAAA', 'ANY', 'CAA', 'CHAOS', 'CNAME', 'DNSResolver', 'HS', 'IN', 'MX', 'NAPTR', 'NONE', 'NS', 'PTR', 'SOA', 'SRV', 'TXT', 'error', 'sock_state_cb', 'timeout', 'win32']

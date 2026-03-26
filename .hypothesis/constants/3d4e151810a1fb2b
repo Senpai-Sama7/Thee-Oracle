@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/agent_graph.py
+# hypothesis_version: 6.151.9
+
+[0.0, 300.0, 'CANCELLED', 'COMPLETED', 'CONTINUE', 'FAILED', 'False', 'None', 'PAUSED', 'PENDING', 'RETRY', 'RUNNING', 'STOP', 'True', 'WorkflowDefinition', 'WorkflowResult', '__builtins__', 'abs', 'all', 'any', 'bool', 'conditional', 'control', 'data', 'edges', 'eval', 'float', 'from_id', 'int', 'len', 'max', 'min', 'nodes', 'ok', 'prompt', 'str', 'sum', 'to_id', 'type']

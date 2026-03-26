@@ -1,0 +1,5 @@
+{
+  "pool_1000": ["discoveryengine.googleapis.com", "dialogflow.googleapis.com"],
+  "pool_300": ["aiplatform.googleapis.com", "run.googleapis.com", "vision.googleapis.com"],
+  "always_free": ["firestore.googleapis.com", "storage.googleapis.com"]
+}

@@ -1,0 +1,4 @@
+# file: /usr/lib/python3/dist-packages/tornado/process.py
+# hypothesis_version: 6.151.9
+
+[100, 1000, 'Future[int]', 'SC_NPROCESSORS_CONF', 'random', 'stderr', 'stdin', 'stdout', 'unknown', 'win32']

@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/main.py
+# hypothesis_version: 6.151.9
+
+[500, '*', '/chat', '/health', '/webhook', '0.0.0.0', '8080', 'GCP_LOCATION', 'GCP_PROJECT_ID', 'GOOGLE_CLOUD_PROJECT', 'ORACLE_SKILLS_DIR', 'OracleAgent', 'PORT', 'WEBHOOK_API_KEY', '__main__', 'agent_type', 'api_key', 'default-session', 'degraded', 'fulfillmentResponse', 'healthy', 'last_user_utterance', 'messages', 'model', 'none', 'parameters', 'service', 'session', 'sessionInfo', 'skills', 'status', 'text']

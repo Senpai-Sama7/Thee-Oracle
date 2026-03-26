@@ -1,0 +1,39 @@
+[project]
+name = "orchestrator-enhancements"
+version = "5.0.0-alpha"
+requires-python = ">=3.11"
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+explicit_package_bases = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = [
+    "comparison_summary.py",
+    "competitive_analysis.py",
+    "diagnose_gui.py",
+    "flask_security_audit.py",
+    "gap_analysis.py",
+    "implement_critical_gaps.py",
+    "infrastructure/oracle_metrics.py",
+    "oracle_vs_openclaw_comparison.py",
+    "quick_implementation.py",
+    "scripts/sync_and_verify.py",
+    "scripts/validate_env.py",
+    "scripts/validate_production.py",
+    "security_audit.py",
+    "security_fixes.py",
+    "simple_implementation.py",
+    "test_advanced_features.py",
+]
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "B", "PLW", "RUF022"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

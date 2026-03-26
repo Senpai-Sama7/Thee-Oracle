@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/knowledge_worker.py
+# hypothesis_version: 6.151.9
+
+[600, '"', '#', '.env', '=', 'Authorization', 'Content-Type', 'GCP_PROJECT_ID', 'POST', 'RABBITMQ_HOST', 'RABBITMQ_PASS', 'RABBITMQ_USER', 'X-Goog-User-Project', '__main__', 'application/json', 'auth', 'error', 'gcloud', 'guest', 'knowledge_requests', 'localhost', 'pageSize', 'print-access-token', 'query', 'unknown', 'utf-8']

@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/interfaces/messaging/slack_adapter.py
+# hypothesis_version: 6.151.9
+
+['...', '0', ':', 'bot_id', 'channel', 'event', 'message', 'slack', 'text', 'thread_ts', 'ts', 'user']

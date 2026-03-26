@@ -1,0 +1,4 @@
+# file: /home/donovan/Projects/replit/src/oracle/a2a_protocol.py
+# hypothesis_version: 6.151.9
+
+[30.0, 'A2A_ACK', 'A2A_SEND', 'at_least_once', 'at_most_once', 'delivery', 'exactly_once', 'from_node', 'message_id', 'system', 'to_node']
