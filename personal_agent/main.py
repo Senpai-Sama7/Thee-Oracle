@@ -217,9 +217,12 @@ def _check_calendar_impl(date: str) -> str:
 def _send_email_impl(to: str, subject: str, body: str) -> str:
     """Publish to RabbitMQ email_tasks queue, guarded by rabbitmq_cb."""
     try:
-        import pika  # type: ignore[import]
+        url = os.environ.get("RABBITMQ_URL", "").strip()
+        if not url:
+            log.warning("rabbitmq_url_missing")
+            return "Email queuing unavailable: RABBITMQ_URL is not configured."
 
-        url = os.environ.get("RABBITMQ_URL", "amqp://admin:oracle_pass_2026@localhost:5672/")
+        import pika  # type: ignore[import]
 
         def _publish() -> str:
             conn = pika.BlockingConnection(pika.URLParameters(url))

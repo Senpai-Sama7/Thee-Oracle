@@ -90,7 +90,9 @@ class OracleConfig:
     """
 
     def __init__(self) -> None:
-        self.project_root = Path(__file__).parent.parent.parent.resolve()
+        repo_root = Path(__file__).parent.parent.parent.resolve()
+        project_root_env = os.environ.get("ORACLE_PROJECT_ROOT")
+        self.project_root = Path(project_root_env).expanduser().resolve() if project_root_env else repo_root
         # IMPORTANT: verify this model ID against the Vertex AI model garden
         # before running. Model preview strings rotate. As of March 2026,
         # gemini-2.0-flash-exp is a verified working endpoint.
@@ -101,16 +103,24 @@ class OracleConfig:
         self.http_timeout = int(os.environ.get("ORACLE_HTTP_TIMEOUT", "15"))
         self.max_turns = int(os.environ.get("ORACLE_MAX_TURNS", "20"))
         self.db_path = self.project_root / "data" / "oracle_core.db"
-        self.mcp_config_path: Path = Path(os.environ.get("ORACLE_MCP_CONFIG", "config/mcp_servers.yaml"))
+        self.mcp_config_path = self._resolve_project_path(os.environ.get("ORACLE_MCP_CONFIG", "config/mcp_servers.yaml"))
         self.mcp_timeout: int = int(os.environ.get("ORACLE_MCP_TIMEOUT", "30"))
-        self.skills_dir: Path = Path(os.environ.get("ORACLE_SKILLS_DIR", "skills/"))
+        self.skills_dir = self._resolve_project_path(os.environ.get("ORACLE_SKILLS_DIR", "skills/"))
 
         # Model Router configuration (Oracle 5.0 Phase 1)
-        self.model_chain_config: Path = Path(os.environ.get("ORACLE_MODEL_CHAIN_CONFIG", "config/model_chain.yaml"))
+        self.model_chain_config = self._resolve_project_path(
+            os.environ.get("ORACLE_MODEL_CHAIN_CONFIG", "config/model_chain.yaml")
+        )
         self.use_model_router: bool = os.environ.get("ORACLE_USE_MODEL_ROUTER", "false").lower() == "true"
 
         if not self.gcp_project:
             log.warning("GCP_PROJECT_ID is not set. Vertex AI calls will fail.")
+
+    def _resolve_project_path(self, raw_path: str) -> Path:
+        candidate = Path(raw_path).expanduser()
+        if candidate.is_absolute():
+            return candidate.resolve()
+        return (self.project_root / candidate).resolve()
 
 
 # ---------------------------------------------------------------------------
