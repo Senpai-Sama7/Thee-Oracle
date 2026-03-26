@@ -1,15 +1,41 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
   "functions": {
-    "app.py": {
-      "excludeFiles": "{tests/**,docs/**,.git/**,.github/**,.venv/**,venv/**,__pycache__/**,.pytest_cache/**,.mypy_cache/**,.hypothesis/**,archive/**}"
+    "api/index.py": {
+      "excludeFiles": "{tests/**,docs/**,.git/**,.github/**,.venv/**,venv/**,__pycache__/**,.pytest_cache/**,.mypy_cache/**,.hypothesis/**,archive/**,gui/venv/**,venv/**}"
     }
   },
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/app.py"
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": "/api/index.py"
     }
-  ]
+  ],
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/gui/static/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.py"
+    }
+  ],
+  "env": {
+    "ORACLE_DEMO_MODE": "true",
+    "FORCE_HTTPS": "false",
+    "PYTHONPATH": "$PYTHONPATH:/var/task"
+  }
 }
 
