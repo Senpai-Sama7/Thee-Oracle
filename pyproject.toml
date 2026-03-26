@@ -4,6 +4,9 @@ version = "5.0.0-hardened"
 description = "Oracle Agent - Enterprise AI Agent Platform on Vercel"
 requires-python = ">=3.11"
 
+[project.scripts]
+app = "app:app"
+
 [tool.mypy]
 strict = true
 ignore_missing_imports = true
