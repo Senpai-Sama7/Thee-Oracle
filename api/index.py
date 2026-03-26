@@ -1,18 +1,11 @@
 """Vercel serverless function for Oracle Agent."""
 
-from http.server import BaseHTTPRequestHandler
-import json
-
-class handler(BaseHTTPRequestHandler):
-    """Vercel serverless function handler class."""
-    
-    def do_GET(self):
-        """Handle GET requests."""
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        
-        html_content = '''
+def handler(request):
+    """Vercel serverless function."""
+    return {
+        'statusCode': 200,
+        'headers': {'Content-Type': 'text/html'},
+        'body': '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -39,6 +32,7 @@ class handler(BaseHTTPRequestHandler):
         }
         h1 { font-size: 3em; margin-bottom: 20px; }
         h2 { color: #4CAF50; }
+        .info { background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -47,36 +41,19 @@ class handler(BaseHTTPRequestHandler):
         <div class="status">
             <h2>✅ Vercel Deployment Successful!</h2>
             <p>Oracle Agent is running on Vercel serverless platform</p>
-            <p><strong>Status:</strong> Function Handler Working</p>
-            <p><strong>Runtime:</strong> Python Serverless</p>
-            <p><strong>URL:</strong> ''' + self.path + '''</p>
+            <div class="info">
+                <p><strong>Status:</strong> Function Handler Working</p>
+                <p><strong>Runtime:</strong> Python Serverless</p>
+                <p><strong>Method:</strong> Simple Function (No Class)</p>
+                <p><strong>Request Path:</strong> ''' + str(request.get('path', '/')) + '''</p>
+                <p><strong>Method:</strong> ''' + str(request.get('method', 'GET')) + '''</p>
+            </div>
         </div>
     </div>
 </body>
 </html>
         '''
-        
-        self.wfile.write(html_content.encode('utf-8'))
-    
-    def do_POST(self):
-        """Handle POST requests."""
-        content_length = int(self.headers.get('Content-Length', 0))
-        post_data = self.rfile.read(content_length)
-        
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        
-        response = {
-            'success': True,
-            'message': 'Oracle Agent received your POST request',
-            'path': self.path,
-            'method': 'POST',
-            'data_length': content_length,
-            'timestamp': '2026-03-25T12:00:00Z'
-        }
-        
-        self.wfile.write(json.dumps(response).encode('utf-8'))
+    }
 
-# Vercel compatibility - export the handler class
+# Export for Vercel
 __all__ = ['handler']
