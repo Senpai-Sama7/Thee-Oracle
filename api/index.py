@@ -1,7 +1,9 @@
 """Vercel serverless function for Oracle Agent."""
 
-def handler(request):
-    """Vercel serverless function."""
+import json
+
+def lambda_handler(event, context):
+    """AWS Lambda-style handler for Vercel compatibility."""
     return {
         'statusCode': 200,
         'headers': {'Content-Type': 'text/html'},
@@ -42,11 +44,10 @@ def handler(request):
             <h2>✅ Vercel Deployment Successful!</h2>
             <p>Oracle Agent is running on Vercel serverless platform</p>
             <div class="info">
-                <p><strong>Status:</strong> Function Handler Working</p>
+                <p><strong>Status:</strong> Lambda Handler Working</p>
                 <p><strong>Runtime:</strong> Python Serverless</p>
-                <p><strong>Method:</strong> Simple Function (No Class)</p>
-                <p><strong>Request Path:</strong> ''' + str(request.get('path', '/')) + '''</p>
-                <p><strong>Method:</strong> ''' + str(request.get('method', 'GET')) + '''</p>
+                <p><strong>Method:</strong> AWS Lambda Style</p>
+                <p><strong>Event:</strong> ''' + json.dumps(event, indent=2) + '''</p>
             </div>
         </div>
     </div>
@@ -55,5 +56,9 @@ def handler(request):
         '''
     }
 
+# Vercel compatibility - try different entry point names
+handler = lambda_handler
+main = lambda_handler
+
 # Export for Vercel
-__all__ = ['handler']
+__all__ = ['handler', 'main', 'lambda_handler']
