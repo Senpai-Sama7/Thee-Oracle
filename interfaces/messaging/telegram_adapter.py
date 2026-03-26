@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from src.oracle.interface_adapter import InterfaceBus, InboundMessage, OutboundMessage
 from src.oracle.model_router import StreamChunk
+
+log = logging.getLogger(__name__)
 
 
 class TelegramAdapter:
@@ -112,8 +115,8 @@ class TelegramAdapter:
                         await self._app.bot.edit_message_text(  # type: ignore
                             chat_id=chat_id, message_id=msg_id, text=new_text
                         )
-                    except Exception:
-                        pass
+                    except Exception as err:
+                        log.warning("Telegram streaming update failed for session %s: %s", session_id, err)
 
                 if chunk.is_final:
                     del self._streaming_messages[session_id]

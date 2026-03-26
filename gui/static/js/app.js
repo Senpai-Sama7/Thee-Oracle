@@ -3,6 +3,9 @@ class OracleGUI {
         this.socket = null;
         this.currentView = 'chat';
         this.sessionId = 'default';
+        this.realtimeEnabled = document.body.dataset.realtimeEnabled !== 'false';
+        this.transportMode = this.realtimeEnabled ? 'socketio' : 'http';
+        this.httpFallbackNotified = false;
         this.messageHistory = [];
         this.sessions = [];
         this.activity = [];
@@ -14,6 +17,7 @@ class OracleGUI {
         this.status = null;
         this.health = null;
         this.settings = null;
+        this.skills = [];
         this.analytics = {
             conversations: 0,
             toolsExecuted: 0,
@@ -59,7 +63,7 @@ class OracleGUI {
         this.restoreState();
         this.configureMarkdown();
         this.bindEvents();
-        this.initializeSocket();
+        this.initializeTransport();
         this.bootstrap();
     }
 
@@ -85,10 +89,17 @@ class OracleGUI {
         this.connectionPillText = document.getElementById('connection-pill-text');
         this.telemetryProject = document.getElementById('telemetry-project');
         this.telemetryModel = document.getElementById('telemetry-model');
+        this.telemetrySkills = document.getElementById('telemetry-skills');
         this.telemetryTime = document.getElementById('telemetry-time');
         this.configModel = document.getElementById('config-model');
+        this.configSkills = document.getElementById('config-skills');
         this.configGcs = document.getElementById('config-gcs');
         this.configTurns = document.getElementById('config-turns');
+        this.heroSkillCount = document.getElementById('hero-skill-count');
+        this.ribbonProject = document.getElementById('ribbon-project');
+        this.ribbonSkills = document.getElementById('ribbon-skills');
+        this.ribbonPosture = document.getElementById('ribbon-posture');
+        this.ribbonMemory = document.getElementById('ribbon-memory');
         this.activityList = document.getElementById('activity-list');
         this.miniActivityFeed = document.getElementById('mini-activity-feed');
         this.toolDeck = document.getElementById('tool-deck');
@@ -146,6 +157,16 @@ class OracleGUI {
             resetBtn: document.getElementById('reset-settings'),
             exportBtn: document.getElementById('export-settings'),
             note: document.getElementById('settings-note'),
+        };
+
+        this.skillsElements = {
+            grid: document.getElementById('skills-grid'),
+            summaryCount: document.getElementById('skills-summary-count'),
+            summaryTools: document.getElementById('skills-summary-tools'),
+            summaryTriggers: document.getElementById('skills-summary-triggers'),
+            summaryCopy: document.getElementById('skills-summary-copy'),
+            refreshBtn: document.getElementById('btn-refresh-skills'),
+            reloadBtn: document.getElementById('btn-reload-skills'),
         };
     }
 
@@ -222,10 +243,12 @@ class OracleGUI {
         this.renderTranscript();
         this.populateCommandPalette();
         this.renderAnalytics();
+        this.renderSkills();
         this.renderHelpFallback();
         this.renderToolDeck();
         this.updateSettingsDisplays();
         this.loadStatus();
+        this.loadSkills();
         this.loadHelp();
         this.loadSettings();
         this.refreshStats();
@@ -242,6 +265,20 @@ class OracleGUI {
             headers['X-API-Key'] = apiKey;
         }
         return headers;
+    }
+
+    async postJson(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: this.buildApiHeaders(true),
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || data.detail || `Request failed with status ${response.status}`);
+        }
+        return data;
     }
 
     bindEvents() {
@@ -302,6 +339,8 @@ class OracleGUI {
 
         document.getElementById('btn-export-sessions').addEventListener('click', () => this.exportSessions());
         document.getElementById('btn-import-sessions').addEventListener('click', () => this.importSessions());
+        this.skillsElements.refreshBtn.addEventListener('click', () => this.loadSkills({ announce: true }));
+        this.skillsElements.reloadBtn.addEventListener('click', () => this.reloadSkills());
 
         this.analyticsElements.timeframe.addEventListener('change', () => this.renderAnalytics());
         this.analyticsElements.metric.addEventListener('change', () => this.renderAnalytics());
@@ -314,6 +353,15 @@ class OracleGUI {
         this.settingsElements.guiApiKey.addEventListener('change', () => this.reconnectSocket());
 
         document.addEventListener('keydown', (event) => this.handleGlobalShortcuts(event));
+    }
+
+    initializeTransport() {
+        if (!this.realtimeEnabled || typeof io !== 'function') {
+            this.activateHttpFallback('HTTP transport enabled for this deployment.', { announce: false });
+            return;
+        }
+        this.transportMode = 'socketio';
+        this.initializeSocket();
     }
 
     initializeSocket() {
@@ -419,8 +467,39 @@ class OracleGUI {
 
     reconnectSocket() {
         this.setApiKey(this.settingsElements.guiApiKey.value);
+        if (!this.realtimeEnabled) {
+            this.activateHttpFallback('HTTP transport enabled for this deployment.', { announce: false, force: true });
+            this.loadSettings();
+            return;
+        }
         this.initializeSocket();
         this.loadSettings();
+    }
+
+    activateHttpFallback(reason, options = {}) {
+        const { announce = true, force = false } = options;
+        if (this.transportMode === 'http' && !force) {
+            this.isConnected = true;
+            this.updateConnectionState('ready', this.status || { transport: { mode: 'http-fallback' } });
+            this.updateSendButton();
+            return;
+        }
+
+        if (this.socket) {
+            this.socket.disconnect();
+            this.socket = null;
+        }
+
+        this.transportMode = 'http';
+        this.isConnected = true;
+        this.updateConnectionState('ready', this.status || { initialized: true, transport: { mode: 'http-fallback' } });
+        this.updateSendButton();
+
+        if (announce && !this.httpFallbackNotified) {
+            this.showToast(reason, 'warning');
+            this.pushActivity('HTTP fallback active', reason, 'network');
+            this.httpFallbackNotified = true;
+        }
     }
 
     handleComposerKeydown(event) {
@@ -488,11 +567,13 @@ class OracleGUI {
             { title: 'Switch to Pulse', description: 'Open the dashboard view.', action: () => this.switchView('dashboard') },
             { title: 'Open Sessions', description: 'Review and load stored sessions.', action: () => this.switchView('sessions') },
             { title: 'Open Analytics', description: 'Inspect usage and performance patterns.', action: () => this.switchView('analytics') },
+            { title: 'Open Skills', description: 'Inspect the local SKILL.md capability catalog.', action: () => this.switchView('skills') },
             { title: 'Open Settings', description: 'Edit runtime controls and API credentials.', action: () => this.switchView('settings') },
             { title: 'Open Guide', description: 'Show help and workflow documentation.', action: () => this.switchView('help') },
             { title: 'Create session', description: 'Start a new named conversation.', action: () => this.openSessionModal() },
             { title: 'Backup to GCS', description: 'Trigger the backup flow.', action: () => this.triggerBackup() },
             { title: 'Clear history', description: 'Clear the active session transcript.', action: () => this.clearHistory() },
+            { title: 'Reload skills', description: 'Refresh the skill runtime and prompt-time catalog.', action: () => this.reloadSkills() },
             { title: 'Run shell tool', description: 'Open manual shell execution.', action: () => this.openToolPanel('shell_execute') },
             { title: 'Run file tool', description: 'Open manual file operations.', action: () => this.openToolPanel('file_system_ops') },
             { title: 'Run HTTP tool', description: 'Open manual HTTP fetch.', action: () => this.openToolPanel('http_fetch') },
@@ -544,6 +625,9 @@ class OracleGUI {
         if (view === 'analytics') {
             this.renderAnalytics();
         }
+        if (view === 'skills') {
+            this.loadSkills();
+        }
     }
 
     viewName(view) {
@@ -552,6 +636,7 @@ class OracleGUI {
             dashboard: 'Pulse',
             sessions: 'Sessions',
             analytics: 'Analytics',
+            skills: 'Skills',
             settings: 'Settings',
             help: 'Guide',
         };
@@ -576,32 +661,43 @@ class OracleGUI {
 
     applyStatus() {
         const initialized = Boolean(this.status?.initialized);
+        if (this.status?.transport?.realtime_enabled === false) {
+            this.activateHttpFallback('Serverless deployment uses HTTP transport fallback.', { announce: false, force: true });
+        }
         this.updateConnectionState(initialized ? 'ready' : 'initializing', this.status);
         this.refreshTelemetry(this.status);
 
-        this.configModel.textContent = this.status?.model_id || '-';
+        this.configModel.textContent = this.cleanLabel(this.status?.model_id);
+        this.configSkills.textContent = `${this.status?.skill_count ?? this.skills.length}`;
         this.configGcs.textContent = this.status?.gcs_enabled ? 'Ready' : 'Off';
         this.configTurns.textContent = this.status?.max_turns ?? '-';
 
-        this.dashboardElements.statusModel.textContent = this.status?.model_id || 'Unavailable';
+        this.dashboardElements.statusModel.textContent = this.cleanLabel(this.status?.model_id, 'Unavailable');
         this.dashboardElements.statusDb.textContent = this.health?.config_loaded ? 'Healthy' : 'Waiting';
         this.dashboardElements.statusCloud.textContent = this.status?.gcs_enabled ? 'Ready' : 'Disabled';
         this.dashboardElements.statusMemory.textContent = initialized ? 'Stable' : 'Cold start';
+        this.ribbonProject.textContent = this.cleanLabel(this.status?.gcp_project, 'Local mode');
+        this.ribbonSkills.textContent = `${this.status?.skill_count ?? this.skills.length} loaded`;
+        this.ribbonPosture.textContent = this.getPostureLabel();
+        this.ribbonMemory.textContent = this.messageHistory.length ? 'Warm and active' : 'Ready';
+        this.refreshStats();
     }
 
     refreshTelemetry(statusData) {
-        this.telemetryProject.textContent = statusData?.gcp_project || 'Local mode';
-        this.telemetryModel.textContent = statusData?.model_id || 'Unknown';
-        this.telemetryTime.textContent = new Date(statusData?.timestamp || Date.now()).toLocaleTimeString();
+        const mergedStatus = { ...(this.status || {}), ...(statusData || {}) };
+        this.telemetryProject.textContent = this.cleanLabel(mergedStatus.gcp_project, 'Local mode');
+        this.telemetryModel.textContent = this.cleanLabel(mergedStatus.model_id, 'Unknown');
+        this.telemetrySkills.textContent = `${mergedStatus.skill_count ?? this.skills.length}`;
+        this.telemetryTime.textContent = new Date(mergedStatus.timestamp || Date.now()).toLocaleTimeString();
         this.statusText.textContent = this.railStatusText.textContent;
     }
 
     updateConnectionState(state, data = null) {
-        const labels = {
-            ready: 'Connected',
-            error: 'Attention',
-            initializing: 'Booting',
-        };
+        const transportMode = data?.transport?.mode || this.status?.transport?.mode || this.transportMode;
+        const isHttpMode = transportMode === 'http' || transportMode === 'http-fallback';
+        const labels = isHttpMode
+            ? { ready: 'HTTP', error: 'HTTP', initializing: 'Booting' }
+            : { ready: 'Connected', error: 'Attention', initializing: 'Booting' };
         const label = data?.initialized === false ? 'Booting' : labels[state] || 'Booting';
 
         this.railStatusText.textContent = label;
@@ -628,23 +724,96 @@ class OracleGUI {
         this.sendButton.disabled = !hasMessage || this.isThinking || !this.isConnected;
     }
 
-    sendMessage() {
+    async sendMessage() {
         const message = this.messageInput.value.trim();
-        if (!message || this.isThinking || !this.socket) {
+        if (!message || this.isThinking || !this.isConnected) {
             return;
         }
 
         const timestamp = new Date().toISOString();
         this.addMessage({ role: 'user', content: message, timestamp });
-        this.socket.emit('send_message', {
-            message,
-            session_id: this.sessionId,
-        });
 
         this.pendingStartedAt = Date.now();
         this.messageInput.value = '';
         this.autoResizeComposer();
         this.updateSendButton();
+
+        if (this.transportMode === 'http' || !this.socket) {
+            await this.sendMessageViaHttp(message);
+            return;
+        }
+
+        this.socket.emit('send_message', {
+            message,
+            session_id: this.sessionId,
+        });
+    }
+
+    async sendMessageViaHttp(message) {
+        this.isThinking = true;
+        this.showLoading();
+        this.updateSendButton();
+        this.pushActivity('Oracle thinking', 'Inference request sent to the HTTP fallback transport.', 'thinking');
+
+        try {
+            const payload = await this.postJson('/api/chat', {
+                message,
+                session_id: this.sessionId,
+            });
+
+            const timestamp = payload?.timestamp || new Date().toISOString();
+            this.addMessage({
+                role: 'assistant',
+                content: payload?.response || '',
+                timestamp,
+            });
+
+            if (this.pendingStartedAt) {
+                const latency = Date.now() - this.pendingStartedAt;
+                this.recordResponseTime(latency);
+                this.pendingStartedAt = null;
+            }
+
+            this.pushActivity('Response received', 'Oracle returned an assistant turn over HTTP.', 'assistant');
+        } catch (error) {
+            this.showToast(error.message || 'Failed to send message.', 'error');
+            this.recordFailure();
+        } finally {
+            this.isThinking = false;
+            this.hideLoading();
+            this.updateSendButton();
+        }
+    }
+
+    async executeToolViaHttp(toolName, values, resultTarget) {
+        this.pushActivity(`Tool running: ${toolName}`, 'Manual tool execution started over HTTP.', 'tool');
+
+        try {
+            const payload = await this.postJson('/api/tools/execute', {
+                tool: toolName,
+                args: values,
+            });
+            const entry = {
+                name: payload.tool,
+                result: payload.result,
+                timestamp: payload.timestamp || new Date().toISOString(),
+            };
+            this.toolHistory.unshift(entry);
+            this.toolHistory = this.toolHistory.slice(0, 8);
+            this.analytics.toolsExecuted += 1;
+            this.renderToolDeck();
+            this.refreshStats();
+            this.renderToolResult(payload.tool, payload.result);
+            if (resultTarget) {
+                resultTarget.innerHTML = `<pre>${this.escapeHtml(JSON.stringify({ tool: payload.tool, ...payload.result }, null, 2))}</pre>`;
+            }
+            this.pushActivity(`Tool complete: ${payload.tool}`, 'Tool execution finished.', 'tool');
+        } catch (error) {
+            if (resultTarget) {
+                resultTarget.innerHTML = `<pre>${this.escapeHtml(error.message || 'Tool execution failed.')}</pre>`;
+            }
+            this.showToast(error.message || 'Tool execution failed.', 'error');
+        }
     }
 
     addMessage(message) {
@@ -875,15 +1044,43 @@ class OracleGUI {
 
     refreshStats() {
         const allMessages = this.sessions.flatMap((session) => session.messages);
+        const skillCount = this.status?.skill_count ?? this.skills.length;
         this.analytics.conversations = allMessages.length;
         this.heroMessageCount.textContent = `${this.messageHistory.length}`;
         this.heroToolCount.textContent = `${this.analytics.toolsExecuted}`;
+        this.heroSkillCount.textContent = `${skillCount}`;
         this.heroResponseTime.textContent = `${Math.round(this.analytics.avgResponseTime)}ms`;
         this.dashboardElements.totalConversations.textContent = `${this.analytics.conversations}`;
         this.dashboardElements.toolsExecuted.textContent = `${this.analytics.toolsExecuted}`;
         this.dashboardElements.avgResponseTime.textContent = `${Math.round(this.analytics.avgResponseTime)}ms`;
         this.dashboardElements.successRate.textContent = `${Math.max(0, Math.min(100, Math.round(this.analytics.successRate)))}%`;
+        this.ribbonMemory.textContent = this.messageHistory.length ? 'Warm and active' : 'Ready';
         this.renderAnalytics();
+    }
+
+    getPostureLabel() {
+        if (this.transportMode === 'http' || this.status?.transport?.mode === 'http-fallback') {
+            return 'Serverless HTTP mode';
+        }
+        const apiKeyConfigured = Boolean(this.getApiKey());
+        if (apiKeyConfigured) {
+            return 'Authenticated mode';
+        }
+        if (this.status?.gcs_enabled) {
+            return 'Protected + backed up';
+        }
+        return 'Loopback bound';
+    }
+
+    cleanLabel(value, fallback = '-') {
+        if (value === null || value === undefined) {
+            return fallback;
+        }
+        const normalized = String(value).trim();
+        if (!normalized) {
+            return fallback;
+        }
+        return normalized.replace(/^"(.*)"$/, '$1');
     }
 
     recordResponseTime(latencyMs) {
@@ -1047,6 +1244,159 @@ class OracleGUI {
         });
     }
 
+    loadSkills(options = {}) {
+        const { announce = false } = options;
+        fetch('/api/skills')
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error('Skill catalog unavailable');
+                }
+                return response.json();
+            })
+            .then((payload) => {
+                this.skills = Array.isArray(payload.skills) ? payload.skills : [];
+                if (!this.status && typeof payload.count === 'number') {
+                    this.status = { skill_count: payload.count };
+                } else if (this.status) {
+                    this.status.skill_count = payload.count;
+                    this.status.skill_tool_count = payload.tool_count;
+                }
+                this.renderSkills();
+                this.refreshStats();
+                if (announce) {
+                    this.showToast('Skill catalog refreshed.', 'success');
+                }
+            })
+            .catch(() => {
+                this.skills = [];
+                this.renderSkills();
+                if (announce) {
+                    this.showToast('Unable to load skill catalog.', 'warning');
+                }
+            });
+    }
+
+    reloadSkills() {
+        this.setApiKey(this.settingsElements.guiApiKey.value);
+        fetch('/api/skills/reload', {
+            method: 'POST',
+            headers: this.buildApiHeaders(),
+        })
+            .then(async (response) => {
+                const payload = await response.json();
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'Skill reload failed');
+                }
+                this.skills = Array.isArray(payload.skills) ? payload.skills : [];
+                if (!this.status) {
+                    this.status = {};
+                }
+                this.status.skill_count = payload.count;
+                this.status.skill_tool_count = payload.tool_count;
+                this.renderSkills();
+                this.refreshStats();
+                this.loadHelp();
+                this.showToast('Skills reloaded.', 'success');
+                this.pushActivity('Skill catalog reloaded', `${payload.count} skills are now active in the local runtime.`, 'system');
+            })
+            .catch((error) => {
+                this.showToast(error.message || 'Failed to reload skills.', 'error');
+            });
+    }
+
+    renderSkills() {
+        const skills = Array.isArray(this.skills) ? this.skills : [];
+        const toolBackedSkills = skills.filter((skill) => Array.isArray(skill.tool_names) && skill.tool_names.length > 0).length;
+        const triggerCount = skills.reduce((count, skill) => {
+            return count + (Array.isArray(skill.triggers) ? skill.triggers.length : 0);
+        }, 0);
+
+        this.skillsElements.summaryCount.textContent = `${skills.length}`;
+        this.skillsElements.summaryTools.textContent = `${toolBackedSkills}`;
+        this.skillsElements.summaryTriggers.textContent = `${triggerCount}`;
+        this.skillsElements.summaryCopy.textContent = skills.length
+            ? `The current workspace exposes ${skills.length} skill packages spanning ${toolBackedSkills} tool-backed capabilities and ${triggerCount} trigger phrases.`
+            : 'No skills are currently exposed by the active runtime.';
+
+        this.skillsElements.grid.innerHTML = '';
+        if (skills.length === 0) {
+            this.skillsElements.grid.innerHTML = `
+                <article class="skill-card empty">
+                    <div class="skill-card-head">
+                        <div>
+                            <span class="skill-source">No skills detected</span>
+                            <h4>Capability catalog is empty</h4>
+                        </div>
+                    </div>
+                    <p>Add a local <code>SKILL.md</code> package or legacy Python skill under <code>skills/</code>, then reload the catalog.</p>
+                </article>
+            `;
+            return;
+        }
+
+        skills.forEach((skill) => {
+            const card = document.createElement('article');
+            card.className = 'skill-card';
+            const triggerMarkup = this.renderChipRow(skill.triggers, 'No trigger phrases');
+            const toolMarkup = this.renderChipRow(skill.tool_names, 'Instruction-only');
+            const preferredToolMarkup = this.renderChipRow(skill.allowed_tools, 'No preferred built-ins');
+            const references = skill?.resources?.references || [];
+            const scripts = skill?.resources?.scripts || [];
+            const assets = skill?.resources?.assets || [];
+
+            card.innerHTML = `
+                <div class="skill-card-head">
+                    <div>
+                        <span class="skill-source">${this.escapeHtml(skill.source_type || 'unknown')}</span>
+                        <h4>${this.escapeHtml(skill.name || 'unknown-skill')}</h4>
+                    </div>
+                    <div class="skill-badge-stack">
+                        <span class="skill-badge">${(skill.tool_names || []).length} tools</span>
+                        <span class="skill-badge">${(skill.triggers || []).length} triggers</span>
+                    </div>
+                </div>
+                <p class="skill-description">${this.escapeHtml(skill.description || 'No description provided.')}</p>
+                <div class="skill-section">
+                    <span class="skill-section-label">Trigger phrases</span>
+                    <div class="skill-chip-row">${triggerMarkup}</div>
+                </div>
+                <div class="skill-section">
+                    <span class="skill-section-label">Exposed tools</span>
+                    <div class="skill-chip-row">${toolMarkup}</div>
+                </div>
+                <div class="skill-section">
+                    <span class="skill-section-label">Preferred existing tools</span>
+                    <div class="skill-chip-row">${preferredToolMarkup}</div>
+                </div>
+                <div class="skill-resource-grid">
+                    <div class="skill-resource-cell">
+                        <span>Scripts</span>
+                        <strong>${scripts.length}</strong>
+                    </div>
+                    <div class="skill-resource-cell">
+                        <span>References</span>
+                        <strong>${references.length}</strong>
+                    </div>
+                    <div class="skill-resource-cell">
+                        <span>Assets</span>
+                        <strong>${assets.length}</strong>
+                    </div>
+                </div>
+            `;
+            this.skillsElements.grid.appendChild(card);
+        });
+    }
+
+    renderChipRow(values, emptyLabel) {
+        if (!Array.isArray(values) || values.length === 0) {
+            return `<span class="skill-chip muted">${this.escapeHtml(emptyLabel)}</span>`;
+        }
+        return values
+            .slice(0, 8)
+            .map((value) => `<span class="skill-chip">${this.escapeHtml(String(value))}</span>`)
+            .join('');
+    }
+
     loadHelp() {
         fetch('/api/help/features')
             .then(async (response) => {
@@ -1096,7 +1446,7 @@ class OracleGUI {
             </article>
             <article class="help-card">
                 <h4>Protected settings</h4>
-                <p>When `ORACLE_API_KEY` is configured, enter the key in Settings to unlock protected reads and writes.</p>
+                <p>When the ORACLE_API_KEY is configured, enter the key in Settings to unlock protected reads and writes.</p>
             </article>
             <article class="help-card">
                 <h4>Telemetry</h4>
@@ -1106,17 +1456,12 @@ class OracleGUI {
     }
 
     loadSettings() {
-        const apiKey = this.getApiKey();
-        if (!apiKey) {
-            this.settings = null;
-            this.settingsElements.note.textContent = 'Protected settings are locked until you provide the GUI API key.';
-            this.updateSettingsDisplays();
-            return;
-        }
-
         fetch('/api/settings', { headers: this.buildApiHeaders() })
             .then(async (response) => {
                 if (!response.ok) {
+                    if (response.status === 401) {
+                        throw new Error('locked');
+                    }
                     throw new Error('Settings fetch failed');
                 }
                 return response.json();
@@ -1124,10 +1469,17 @@ class OracleGUI {
             .then((settings) => {
                 this.settings = settings;
                 this.applySettings(settings);
-                this.settingsElements.note.textContent = 'Settings are unlocked and ready to save.';
+                this.settingsElements.note.textContent = this.getApiKey()
+                    ? 'Settings are unlocked and ready to save.'
+                    : 'Local mode is unlocked. Add ORACLE_API_KEY only if you want explicit GUI authentication.';
             })
-            .catch(() => {
-                this.settingsElements.note.textContent = 'Settings could not be loaded. Verify the API key and backend state.';
+            .catch((error) => {
+                if (error.message === 'locked') {
+                    this.settings = null;
+                    this.settingsElements.note.textContent = 'Protected settings are locked until you provide the GUI API key.';
+                } else {
+                    this.settingsElements.note.textContent = 'Settings could not be loaded. Verify the backend state.';
+                }
             });
     }
 
@@ -1217,14 +1569,35 @@ class OracleGUI {
     }
 
     triggerBackup() {
-        if (!this.socket) {
+        if (this.transportMode === 'http' || !this.socket) {
+            this.postJson('/api/backup', {})
+                .then((payload) => {
+                    if (payload?.success) {
+                        this.showToast('Backup completed successfully.', 'success');
+                        this.pushActivity('Backup complete', payload.gcs_uri || 'Cloud backup completed.', 'system');
+                    } else {
+                        throw new Error(payload?.error || 'Unknown error');
+                    }
+                })
+                .catch((error) => {
+                    this.showToast(error.message || 'Backup failed.', 'error');
+                });
             return;
         }
         this.socket.emit('backup_to_gcs');
     }
 
     clearHistory() {
-        if (!this.socket) {
+        if (this.transportMode === 'http' || !this.socket) {
+            this.postJson('/api/history/clear', { session_id: this.sessionId })
+                .then(() => {
+                    this.clearCurrentSessionMessages();
+                    this.showToast('Session history cleared.', 'success');
+                    this.pushActivity('History cleared', 'Session transcript reset.', 'system');
+                })
+                .catch((error) => {
+                    this.showToast(error.message || 'Failed to clear history.', 'error');
+                });
             return;
         }
         this.socket.emit('clear_history', { session_id: this.sessionId });
@@ -1315,8 +1688,14 @@ class OracleGUI {
                 delete values.content;
             }
 
-            this.socket.emit('execute_tool', { tool: toolName, args: values });
             result.innerHTML = '<pre>Tool request sent…</pre>';
+
+            if (this.transportMode === 'http' || !this.socket) {
+                this.executeToolViaHttp(toolName, values, result);
+                return;
+            }
+
+            this.socket.emit('execute_tool', { tool: toolName, args: values });
         });
 
         actions.querySelector('#tool-clear-button').addEventListener('click', () => {

@@ -4,8 +4,13 @@ Oracle Agent GUI Launcher
 Handles dependency checking and launches the web interface
 """
 
-import sys
 import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 
 def check_dependencies():
@@ -23,6 +28,8 @@ def check_dependencies():
             missing.append(package)
 
     return missing
+
+
 def main():
     """Launch the Oracle Agent GUI."""
     gui_host = os.environ.get("ORACLE_GUI_HOST", "127.0.0.1").strip() or "127.0.0.1"
@@ -45,7 +52,13 @@ def main():
     print("=" * 50)
 
     try:
-        from gui.app import app, socketio
+        from gui.app import app, create_gui_directories, initialize_agent, socketio
+
+        create_gui_directories()
+        if initialize_agent():
+            print("✅ Oracle Agent initialized")
+        else:
+            print("⚠️  Oracle Agent failed to initialize; GUI will show error state")
 
         socketio.run(app, host=gui_host, port=gui_port, debug=False)
     except KeyboardInterrupt:

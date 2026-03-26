@@ -6,13 +6,11 @@ This repository is not uniformly polished. The maintained runtime path is solid 
 
 ## Current Status
 
-- `pytest -q` -> `140 passed, 2 warnings`
+- `pytest -q` -> `167 passed`
 - `ruff check .` -> clean
 - `mypy src/oracle orchestrator.py` -> clean under the repo's strict mypy config
 - `python3 demo.py` -> passes
 - `python3 -m compileall src/oracle personal_agent email_worker interfaces gui skills orchestrator.py main.py demo.py` -> passes
-
-The two pytest warnings are external `google._upb._message` deprecation warnings on Python 3.13.
 
 ## What Is Here
 
@@ -50,9 +48,10 @@ Create a `.env` file from [.env.example](./.env.example) and set the variables f
 Important notes:
 
 - `ORACLE_PROJECT_ROOT` is now honored by `OracleConfig` and defines the file sandbox root.
+- `ORACLE_DB_PATH` overrides the SQLite path; on Vercel the agent now defaults to `/tmp/oracle_core.db`.
 - `GCP_PROJECT_ID` is required for live Gemini/Vertex AI calls.
 - `RABBITMQ_URL` is required for `personal_agent` and `email_worker`; those paths now fail closed if it is missing.
-- The checked-in workspace does not include a root `requirements.txt`. `pyproject.toml` only configures tooling, and `gui/requirements.txt` contains GUI-specific packages. Use the provisioned environment or install dependencies for the component you want to run.
+- `requirements.txt` now provides a root runtime dependency set suitable for the Flask/Vercel deployment path.
 
 ### 2. Run the component you need
 
@@ -93,6 +92,29 @@ python3 gui/launch.py
 ```
 
 The GUI defaults to `http://127.0.0.1:5001` and can be moved with `ORACLE_GUI_HOST` / `ORACLE_GUI_PORT`.
+
+## Vercel Deployment
+
+This repo now includes a Vercel-compatible Flask entrypoint and routing config:
+
+- [app.py](./app.py): WSGI entrypoint that boots the GUI runtime
+- [vercel.json](./vercel.json): catch-all rewrite to the Flask app plus bundle exclusions
+- [requirements.txt](./requirements.txt): Python runtime dependencies for the deployed function
+
+Deployment notes:
+
+- On Vercel, the GUI automatically switches to an HTTP fallback transport because Vercel Functions do not expose a Socket.IO/WebSocket server path.
+- The serverless runtime now stores SQLite state in `/tmp/oracle_core.db` by default unless `ORACLE_DB_PATH` is set.
+- The deployed filesystem is still effectively read-only except for `/tmp`, so file-writing tools should be treated accordingly.
+
+Recommended Vercel environment variables:
+
+- `GCP_PROJECT_ID`
+- `GCP_LOCATION`
+- `ORACLE_MODEL_ID`
+- `ORACLE_API_KEY`
+- `SECRET_KEY`
+- `ORACLE_DB_PATH` if you want a custom writable path under `/tmp`
 
 ## Verification Commands
 

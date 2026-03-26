@@ -11,7 +11,7 @@ This repository has a mix of current docs, design notes, and older aspirational 
 
 ## Current Verified Baseline
 
-- `pytest -q` -> `129 passed, 2 warnings`
+- `pytest -q` -> `167 passed`
 - `ruff check .` -> clean
 - `mypy src/oracle orchestrator.py` -> clean
 - `python3 demo.py` -> passes

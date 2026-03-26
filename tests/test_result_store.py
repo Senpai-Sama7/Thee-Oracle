@@ -45,6 +45,17 @@ def test_result_store_get_many(memory_db: sqlite3.Connection) -> None:
     assert results["t3"]["val"] == 3  # type: ignore
 
 
+def test_result_store_get_many_handles_untrusted_ids(memory_db: sqlite3.Connection) -> None:
+    store = ResultStore(memory_db)
+    suspicious_id = 't1") OR 1=1 --'
+    store.store("safe", {"val": 1})
+    store.store(suspicious_id, {"val": 2})
+
+    results = store.get_many([suspicious_id, "missing"])
+
+    assert results == {suspicious_id: {"val": 2}}
+
+
 def test_result_store_inject_parent(memory_db: sqlite3.Connection) -> None:
     store = ResultStore(memory_db)
     store.store("parent_1", {"keyA": "valueA"})
@@ -60,3 +71,17 @@ def test_result_store_inject_parent(memory_db: sqlite3.Connection) -> None:
     assert "__results__" in task.payload
     assert task.payload["__results__"]["parent_1"]["keyA"] == "valueA"
     assert task.payload["__results__"]["parent_2"]["keyB"] == "valueB"
+
+
+def test_result_store_get_many_handles_sql_like_task_ids(memory_db: sqlite3.Connection) -> None:
+    store = ResultStore(memory_db)
+    tricky_id = "task'); DROP TABLE task_results;--"
+    store.store(tricky_id, {"val": 99})
+
+    results = store.get_many([tricky_id])
+
+    assert results[tricky_id]["val"] == 99
+    cur = memory_db.execute("SELECT COUNT(*) FROM task_results")
+    row = cur.fetchone()
+    assert row is not None
+    assert row[0] == 1

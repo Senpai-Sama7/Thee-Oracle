@@ -8,10 +8,9 @@ Use it as the code-grounded source of truth before trusting older docs, aspirati
 - This is a real git checkout now; older notes claiming `.git/` is absent are stale.
 - The repo is not uniform. It contains a hardened runtime path plus older prototype and research modules.
 - Verified on 2026-03-26 from the repo root:
-  - `pytest -q` -> `140 passed, 2 warnings`
+  - `pytest -q` -> `167 passed`
   - `mypy src/oracle orchestrator.py` -> clean
   - `ruff check .` -> clean
-- The two pytest warnings are external `google._upb._message` deprecation warnings, not repo failures.
 - Highest-trust code paths are:
   - `src/oracle/agent_system.py`
   - `src/oracle/model_router.py`

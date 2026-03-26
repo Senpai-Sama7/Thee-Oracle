@@ -10,7 +10,7 @@ This file is a lightweight companion to [AGENTS.md](./AGENTS.md), not a separate
 
 ## Current Verified Snapshot
 
-- `pytest -q` -> `129 passed, 2 warnings`
+- `pytest -q` -> `167 passed`
 - `ruff check .` -> clean
 - `mypy src/oracle orchestrator.py` -> clean
 

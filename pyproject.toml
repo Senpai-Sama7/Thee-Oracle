@@ -37,3 +37,7 @@ select = ["F", "E", "W", "B", "PLW", "RUF022"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:Type google\\._upb\\._message\\.MessageMapContainer uses PyType_Spec.*:DeprecationWarning",
+    "ignore:Type google\\._upb\\._message\\.ScalarMapContainer uses PyType_Spec.*:DeprecationWarning",
+]

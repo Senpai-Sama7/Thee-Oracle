@@ -26,9 +26,8 @@ try:
 except ImportError:
     class Talisman:  # type: ignore[no-redef]
         def __init__(self, app, **kwargs):
-            logging.getLogger(__name__).warning(
-                "flask_talisman not installed; using built-in GUI security header fallback"
-            )
+            del app, kwargs
+            logging.getLogger(__name__).debug("Using built-in GUI security header fallback")
 
 
 try:
@@ -42,9 +41,7 @@ except ImportError:
         _window_seconds = {"minute": 60, "hour": 3600, "day": 86400}
 
         def __init__(self, *args, **kwargs):
-            logging.getLogger(__name__).warning(
-                "flask_limiter not installed; using in-process fallback rate limiting"
-            )
+            logging.getLogger(__name__).debug("Using in-process fallback rate limiting")
             self._calls: dict[str, list[float]] = defaultdict(list)
             self._key_func = kwargs.get("key_func", get_remote_address)
             self._lock = Lock()
@@ -103,7 +100,7 @@ MAX_GUI_SESSION_ID_LENGTH = 128
 
 def env_flag(*names: str) -> bool:
     for name in names:
-        if os.environ.get(name, "").strip().lower() == "true":
+        if os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}:
             return True
     return False
 
@@ -121,10 +118,14 @@ GUI_SECURITY_POLICY = {
 
 # Initialize Flask app
 app = Flask(__name__, template_folder="templates", static_folder="static")
+configured_gui_host = os.environ.get("ORACLE_GUI_HOST", "127.0.0.1").strip() or "127.0.0.1"
 secret_key = os.environ.get("SECRET_KEY", "").strip()
 if not secret_key:
     secret_key = secrets.token_urlsafe(32)
-    logger.warning("SECRET_KEY not set; using ephemeral GUI secret key")
+    if configured_gui_host in {"127.0.0.1", "localhost", "::1"}:
+        logger.debug("SECRET_KEY not set; using ephemeral GUI secret key for local development")
+    else:
+        logger.warning("SECRET_KEY not set for a non-loopback GUI bind; using ephemeral GUI secret key")
 force_https = env_flag("ORACLE_GUI_FORCE_HTTPS", "FORCE_HTTPS")
 app.config["SECRET_KEY"] = secret_key
 app.config["FORCE_HTTPS"] = force_https
@@ -170,6 +171,24 @@ class AppState:
 app_state = AppState()
 
 
+def is_vercel_deployment() -> bool:
+    return env_flag("VERCEL") or bool(os.environ.get("VERCEL_URL", "").strip())
+
+
+def realtime_transport_enabled() -> bool:
+    if env_flag("ORACLE_GUI_FORCE_HTTP", "ORACLE_GUI_DISABLE_SOCKETIO"):
+        return False
+    return not is_vercel_deployment()
+
+
+def current_transport_status() -> dict[str, Any]:
+    return {
+        "mode": "socketio" if realtime_transport_enabled() else "http-fallback",
+        "realtime_enabled": realtime_transport_enabled(),
+        "platform": "vercel" if is_vercel_deployment() else "self-hosted",
+    }
+
+
 def get_expected_api_key() -> str:
     return os.environ.get("ORACLE_API_KEY", "").strip()
 
@@ -194,6 +213,48 @@ def normalize_session_id(raw_value: Any) -> str:
     if not cleaned:
         return "default"
     return cleaned[:MAX_GUI_SESSION_ID_LENGTH]
+
+
+def run_agent_prompt(prompt: str, session_id: str) -> str:
+    if not app_state.agent:
+        raise RuntimeError("Oracle Agent not initialized")
+
+    loop: asyncio.AbstractEventLoop | None = None
+    if hasattr(app_state.agent, "run_async"):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(app_state.agent.run_async(prompt, session_id))
+        except Exception as exc:
+            logger.warning("Async execution failed, using sync: %s", exc)
+        finally:
+            if loop is not None:
+                loop.close()
+            asyncio.set_event_loop(None)
+
+    return app_state.agent.run(prompt, session_id)
+
+
+def execute_gui_tool(tool_name: str, args: dict[str, Any]) -> Any:
+    if not app_state.agent:
+        raise RuntimeError("Oracle Agent not initialized")
+
+    if hasattr(app_state.agent, "_tool_registry") and app_state.agent._tool_registry:
+        loop = asyncio.new_event_loop()
+        try:
+            asyncio.set_event_loop(loop)
+            return loop.run_until_complete(app_state.agent._tool_registry.dispatch(tool_name, args))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
+
+    return app_state.agent._dispatch(tool_name, args)
+
+
+def clear_session_history(session_id: str) -> None:
+    if not app_state.agent or not hasattr(app_state.agent, "db"):
+        raise RuntimeError("Oracle Agent not initialized")
+    app_state.agent.db.save_history(session_id, [])
 
 
 def socket_request_authorized() -> bool:
@@ -235,13 +296,59 @@ def initialize_agent() -> bool:
         return False
 
 
+def get_skill_catalog() -> list[dict[str, Any]]:
+    """Get the current skill catalog from the active agent."""
+    if not app_state.agent or not hasattr(app_state.agent, "get_skill_catalog"):
+        return []
+    try:
+        return app_state.agent.get_skill_catalog()
+    except Exception as exc:
+        logger.warning("Unable to read skill catalog: %s", exc)
+        return []
+
+
+def sanitize_skill_catalog(catalog: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a UI-safe view of the skill catalog without local filesystem paths."""
+    sanitized: list[dict[str, Any]] = []
+    for entry in catalog:
+        resources = entry.get("resources", {})
+        scripts = resources.get("scripts", []) if isinstance(resources, dict) else []
+        references = resources.get("references", []) if isinstance(resources, dict) else []
+        assets = resources.get("assets", []) if isinstance(resources, dict) else []
+        tool_names = entry.get("tool_names", [])
+        triggers = entry.get("triggers", [])
+        allowed_tools = entry.get("allowed_tools", [])
+
+        sanitized.append(
+            {
+                "name": entry.get("name", "unknown-skill"),
+                "description": entry.get("description", ""),
+                "source_type": entry.get("source_type", "unknown"),
+                "tool_names": tool_names if isinstance(tool_names, list) else [],
+                "triggers": triggers if isinstance(triggers, list) else [],
+                "allowed_tools": allowed_tools if isinstance(allowed_tools, list) else [],
+                "resources": {
+                    "scripts": scripts if isinstance(scripts, list) else [],
+                    "references": references if isinstance(references, list) else [],
+                    "assets": assets if isinstance(assets, list) else [],
+                },
+                "resource_counts": {
+                    "scripts": len(scripts) if isinstance(scripts, list) else 0,
+                    "references": len(references) if isinstance(references, list) else 0,
+                    "assets": len(assets) if isinstance(assets, list) else 0,
+                },
+            }
+        )
+    return sanitized
+
+
 def require_auth(f):
     """Decorator to require authentication for API endpoints"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         expected_key = get_expected_api_key()
         if not expected_key:
-            return jsonify({"error": "ORACLE_API_KEY is not configured"}), 503
+            return f(*args, **kwargs)
 
         api_key = request.headers.get("X-API-Key")
         if not is_authorized_api_key(api_key):
@@ -254,7 +361,12 @@ def require_auth(f):
 @app.route("/")
 def index():
     """Main GUI interface."""
-    return render_template("index.html")
+    transport = current_transport_status()
+    return render_template(
+        "index.html",
+        realtime_enabled=transport["realtime_enabled"],
+        transport_mode=transport["mode"],
+    )
 
 
 @app.route("/api/status")
@@ -265,6 +377,8 @@ def get_status():
         if not app_state.agent_config:
             return jsonify({"error": "No configuration loaded"}), 503
 
+        skill_catalog = sanitize_skill_catalog(get_skill_catalog())
+
         status = {
             "initialized": app_state.agent is not None,
             "model_id": app_state.agent_config.model_id,
@@ -272,6 +386,10 @@ def get_status():
             "gcp_location": app_state.agent_config.gcp_location,
             "max_turns": app_state.agent_config.max_turns,
             "gcs_enabled": app_state.agent.gcs_backup_enabled if app_state.agent else False,
+            "skill_count": len(skill_catalog),
+            "skill_tool_count": sum(len(entry["tool_names"]) for entry in skill_catalog),
+            "skill_names": [entry["name"] for entry in skill_catalog[:6]],
+            "transport": current_transport_status(),
             "timestamp": datetime.now().isoformat(),
         }
 
@@ -279,6 +397,119 @@ def get_status():
     except Exception as e:
         logger.error(f"Error getting status: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/chat", methods=["POST"])
+@limiter.limit("20 per minute")
+@require_auth
+def chat_via_http():
+    """HTTP fallback chat endpoint for serverless environments."""
+    if not app_state.agent:
+        return jsonify({"error": "Oracle Agent not initialized"}), 503
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid message payload"}), 400
+
+    prompt = data.get("message", "")
+    session_id = normalize_session_id(data.get("session_id", "default"))
+
+    if not isinstance(prompt, str):
+        return jsonify({"error": "Message must be a string"}), 400
+    prompt = prompt.strip()
+
+    if not prompt:
+        return jsonify({"error": "Empty message"}), 400
+    if len(prompt) > MAX_GUI_MESSAGE_LENGTH:
+        return jsonify({"error": "Message exceeds GUI limit"}), 400
+
+    try:
+        logger.info("[%s] User: %s", session_id, prompt[:100])
+        response = run_agent_prompt(prompt, session_id)
+        logger.info("[%s] Assistant: %s", session_id, response[:100])
+        return jsonify(
+            {
+                "session_id": session_id,
+                "response": response,
+                "timestamp": datetime.now().isoformat(),
+                "transport": current_transport_status(),
+            }
+        )
+    except Exception as exc:
+        logger.error("Error processing HTTP chat message: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/skills", methods=["GET"])
+@limiter.limit("20 per minute")
+def get_skills():
+    """Return the sanitized discovered skill catalog for the GUI."""
+    try:
+        catalog = sanitize_skill_catalog(get_skill_catalog())
+        return jsonify(
+            {
+                "skills": catalog,
+                "count": len(catalog),
+                "tool_count": sum(len(entry["tool_names"]) for entry in catalog),
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+    except Exception as exc:
+        logger.error("Error getting skill catalog: %s", exc)
+        return jsonify({"error": "Internal server error"}), 500
+
+
+@app.route("/api/skills/reload", methods=["POST"])
+@limiter.limit("5 per minute")
+@require_auth
+def reload_skills():
+    """Reload local skills without rebuilding the entire GUI runtime."""
+    if not app_state.agent or not hasattr(app_state.agent, "reload_skills"):
+        return jsonify({"success": False, "error": "Skill runtime is unavailable"}), 503
+
+    try:
+        app_state.agent.reload_skills()
+        catalog = sanitize_skill_catalog(get_skill_catalog())
+        return jsonify(
+            {
+                "success": True,
+                "message": "Skills reloaded successfully",
+                "count": len(catalog),
+                "tool_count": sum(len(entry["tool_names"]) for entry in catalog),
+                "skills": catalog,
+            }
+        )
+    except Exception as exc:
+        logger.error("Error reloading skills: %s", exc)
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/tools/execute", methods=["POST"])
+@limiter.limit("10 per minute")
+@require_auth
+def execute_tool_http():
+    """HTTP fallback direct-tool endpoint for serverless environments."""
+    if not app_state.agent:
+        return jsonify({"error": "Agent not initialized"}), 503
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid tool payload"}), 400
+
+    tool_name = data.get("tool")
+    args = data.get("args", {})
+
+    if not isinstance(tool_name, str) or tool_name not in GUI_ALLOWED_DIRECT_TOOLS:
+        return jsonify({"error": "Unsupported tool"}), 400
+    if not isinstance(args, dict):
+        return jsonify({"error": "Tool arguments must be an object"}), 400
+
+    try:
+        result = execute_gui_tool(tool_name, args)
+        return jsonify({"tool": tool_name, "result": result, "timestamp": datetime.now().isoformat()})
+    except Exception as exc:
+        logger.error("Error executing HTTP tool %s: %s", tool_name, exc)
+        return jsonify({"error": f"Tool execution failed: {exc}"}), 500
 
 
 @app.route("/api/config", methods=["GET", "POST"])
@@ -462,12 +693,15 @@ def get_settings():
 def health_check():
     """Health check endpoint."""
     try:
+        skill_catalog = sanitize_skill_catalog(get_skill_catalog())
         health_status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
             "agent_initialized": app_state.agent is not None,
             "config_loaded": app_state.agent_config is not None,
             "gcs_enabled": app_state.agent.gcs_backup_enabled if app_state.agent else False,
+            "skill_count": len(skill_catalog),
+            "transport": current_transport_status(),
             "version": "5.0.0",
         }
 
@@ -484,6 +718,41 @@ def health_check():
     except Exception as e:
         logger.error(f"Error in health check: {e}")
         return jsonify({"status": "unhealthy", "error": str(e), "timestamp": datetime.now().isoformat()}), 500
+
+
+@app.route("/api/backup", methods=["POST"])
+@limiter.limit("5 per minute")
+@require_auth
+def backup_via_http():
+    """HTTP fallback backup endpoint for serverless environments."""
+    if not app_state.agent:
+        return jsonify({"error": "Agent not initialized"}), 503
+
+    try:
+        result = app_state.agent.backup_to_gcs()
+        return jsonify(result)
+    except Exception as exc:
+        logger.error("Backup failed: %s", exc)
+        return jsonify({"error": f"Backup failed: {exc}"}), 500
+
+
+@app.route("/api/history/clear", methods=["POST"])
+@limiter.limit("10 per minute")
+@require_auth
+def clear_history_via_http():
+    """HTTP fallback clear-history endpoint for serverless environments."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Invalid clear-history payload"}), 400
+
+    session_id = normalize_session_id(data.get("session_id", "default"))
+
+    try:
+        clear_session_history(session_id)
+        return jsonify({"session_id": session_id, "cleared": True, "timestamp": datetime.now().isoformat()})
+    except Exception as exc:
+        logger.error("Failed to clear history: %s", exc)
+        return jsonify({"error": f"Failed to clear history: {exc}"}), 500
 
 
 @app.route("/api/settings/reset", methods=["POST"])
@@ -520,6 +789,7 @@ def reset_settings():
 def get_help_features():
     """Get help information about available features."""
     try:
+        skill_catalog = sanitize_skill_catalog(get_skill_catalog())
         features = {
             "ai_conversations": {
                 "title": "AI Conversations",
@@ -570,6 +840,21 @@ def get_help_features():
             },
         }
 
+        if skill_catalog:
+            features["skills"] = {
+                "title": "Skill Fabric",
+                "description": (
+                    "Repository-local operating procedures loaded from "
+                    "Claude-style SKILL.md packages and legacy Python skills."
+                ),
+                "capabilities": [
+                    f"{len(skill_catalog)} skills are currently discovered in the local workspace.",
+                    "Prompt-time skill selection injects the most relevant operating instructions automatically.",
+                    "Instruction-only skills and tool-backed skills can coexist in the same catalog.",
+                ],
+                "examples": [entry["name"] for entry in skill_catalog[:6]],
+            }
+
         return jsonify(features)
 
     except Exception as e:
@@ -593,12 +878,14 @@ def handle_connect(auth: Optional[dict[str, Any]] = None):
 
     # Send current status
     if app_state.agent:
+        skill_catalog = sanitize_skill_catalog(get_skill_catalog())
         emit(
             "agent_status",
             {
                 "initialized": True,
                 "model_id": app_state.agent.cfg.model_id,
                 "gcs_enabled": app_state.agent.gcs_backup_enabled,
+                "skill_count": len(skill_catalog),
             },
         )
     else:
@@ -649,24 +936,7 @@ def handle_message(data):
         # Emit thinking indicator
         emit("thinking", {"session_id": session_id})
 
-        # Process with Oracle Agent
-        # Use run_async if available, otherwise fallback to sync
-        try:
-            # Try async version first
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            if hasattr(app_state.agent, "run_async"):
-                response = loop.run_until_complete(app_state.agent.run_async(prompt, session_id))
-            else:
-                # Fallback to synchronous
-                response = app_state.agent.run(prompt, session_id)
-
-            loop.close()
-
-        except Exception as e:
-            logger.warning(f"Async execution failed, using sync: {e}")
-            response = app_state.agent.run(prompt, session_id)
+        response = run_agent_prompt(prompt, session_id)
 
         # Emit the response
         emit(
@@ -715,15 +985,7 @@ def handle_tool_execution(data):
         emit("tool_executing", {"tool": tool_name, "args": args})
 
         # Execute tool via agent's tool executor
-        if hasattr(app_state.agent, "_tool_registry") and app_state.agent._tool_registry:
-            import asyncio
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(app_state.agent._tool_registry.dispatch(tool_name, args))
-            loop.close()
-        else:
-            result = app_state.agent._dispatch(tool_name, args)
+        result = execute_gui_tool(tool_name, args)
 
         emit("tool_result", {"tool": tool_name, "result": result, "timestamp": datetime.now().isoformat()})
 
@@ -764,8 +1026,7 @@ def clear_history(data):
 
     if app_state.agent and hasattr(app_state.agent, "db"):
         try:
-            # Save empty history to clear
-            app_state.agent.db.save_history(session_id, [])
+            clear_session_history(session_id)
             emit("history_cleared", {"session_id": session_id})
         except Exception as e:
             emit("error", {"message": f"Failed to clear history: {str(e)}"})

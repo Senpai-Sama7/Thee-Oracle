@@ -679,10 +679,13 @@ class SkillLoader:
         """Reload skills from directory."""
         logger.info("Reloading skills...")
         for skill in self.skills.values():
+            teardown_coro = skill.teardown()
             try:
-                asyncio.create_task(skill.teardown())
+                loop = asyncio.get_running_loop()
             except RuntimeError:
-                asyncio.run(skill.teardown())
+                asyncio.run(teardown_coro)
+            else:
+                loop.create_task(teardown_coro)
         return self.load_all()
 
     async def teardown_all(self) -> None:

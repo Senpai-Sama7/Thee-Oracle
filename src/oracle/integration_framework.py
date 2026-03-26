@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from enum import Enum
 from typing import Any, cast
-from urllib.parse import urlsplit
 
 import requests
+
+from .network_guard import HTTP_REDIRECT_BLOCKED_ERROR, validate_outbound_http_url
 
 
 class IntegrationType(Enum):
@@ -47,7 +48,9 @@ class Integration:
         url = self.config.get("url")
         if not isinstance(url, str) or not self._is_allowed_url(url):
             return False
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10, allow_redirects=False)
+        if 300 <= response.status_code < 400:
+            return False
         return response.status_code == 200
 
     def _connect_database(self) -> bool:
@@ -66,15 +69,27 @@ class Integration:
         """Execute API operation."""
         del operation
         url_value = self.config.get("url")
-        if not isinstance(url_value, str) or not self._is_allowed_url(url_value):
+        if not isinstance(url_value, str):
             raise ValueError("API integration missing URL")
+        error = validate_outbound_http_url(url_value)
+        if error:
+            raise ValueError(error)
 
         method = str(data.get("method", "GET"))
         headers = data.get("headers", {})
         if not isinstance(headers, dict):
             headers = {}
 
-        response = requests.request(method, url_value, headers=headers, json=data.get("body"), timeout=10)
+        response = requests.request(
+            method,
+            url_value,
+            headers=headers,
+            json=data.get("body"),
+            timeout=10,
+            allow_redirects=False,
+        )
+        if 300 <= response.status_code < 400:
+            raise ValueError(HTTP_REDIRECT_BLOCKED_ERROR)
         return {
             "status_code": response.status_code,
             "data": response.json()
@@ -84,8 +99,7 @@ class Integration:
 
     @staticmethod
     def _is_allowed_url(url: str) -> bool:
-        parsed = urlsplit(url)
-        return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+        return validate_outbound_http_url(url) is None
 
     def _execute_database(self, operation: str, data: dict[str, Any]) -> dict[str, Any]:
         """Execute database operation."""

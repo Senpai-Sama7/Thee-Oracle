@@ -1,7 +1,7 @@
 import pika
 import json
 import os
-import subprocess
+import subprocess  # nosec B404 - fixed-argv call to gcloud for token retrieval
 import time
 from shutil import which
 from typing import Any, Dict, cast
@@ -30,7 +30,7 @@ def get_token() -> str:
     gcloud_path = which("gcloud")
     if not gcloud_path:
         raise FileNotFoundError("gcloud is not installed or not on PATH")
-    return subprocess.check_output([gcloud_path, "auth", "print-access-token"], text=True).strip()
+    return subprocess.check_output([gcloud_path, "auth", "print-access-token"], text=True).strip()  # nosec B603
 
 
 def _validate_google_api_url(url: str) -> None:

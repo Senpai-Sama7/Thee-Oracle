@@ -12,10 +12,61 @@ class StubOracleAgent:
         self.calls: list[tuple[str, str]] = []
         self.cfg = SimpleNamespace(model_id="stub-model")
         self.gcs_backup_enabled = False
+        self.reload_count = 0
+        self.dispatched_tools: list[tuple[str, dict[str, object]]] = []
+        self.cleared_sessions: list[str] = []
+        self._tool_registry = None
+        self.db = SimpleNamespace(save_history=self._save_history)
+        self.skill_catalog = [
+            {
+                "name": "code-review-guidance",
+                "description": "Repository-local code review procedure.",
+                "source_type": "skill_package",
+                "triggers": ["code review", "security audit"],
+                "allowed_tools": ["shell_execute", "file_system_ops"],
+                "tool_names": ["code_review_notes"],
+                "resources": {
+                    "scripts": ["scripts/run_review.py"],
+                    "references": ["references/checklist.md"],
+                    "assets": [],
+                },
+            },
+            {
+                "name": "incident-ops",
+                "description": "Incident response operating procedure.",
+                "source_type": "skill_package",
+                "triggers": ["incident", "rollback"],
+                "allowed_tools": [],
+                "tool_names": [],
+                "resources": {
+                    "scripts": [],
+                    "references": ["references/runbook.md"],
+                    "assets": ["assets/war-room.png"],
+                },
+            },
+        ]
 
     def run(self, prompt: str, session_id: str = "default") -> str:
         self.calls.append((prompt, session_id))
         return f"stub:{prompt}"
+
+    def get_skill_catalog(self) -> list[dict[str, object]]:
+        return self.skill_catalog
+
+    def reload_skills(self) -> list[dict[str, object]]:
+        self.reload_count += 1
+        return self.skill_catalog
+
+    def _dispatch(self, tool_name: str, args: dict[str, object]) -> dict[str, object]:
+        self.dispatched_tools.append((tool_name, args))
+        return {"success": True, "tool": tool_name, "args": args}
+
+    def backup_to_gcs(self) -> dict[str, object]:
+        return {"success": True, "gcs_uri": "gs://oracle/test-backup"}
+
+    def _save_history(self, session_id: str, history: list[object]) -> None:
+        assert history == []
+        self.cleared_sessions.append(session_id)
 
 
 @pytest.fixture
@@ -180,10 +231,14 @@ def test_gui_status_and_health_endpoints(gui_client) -> None:
     assert status_response.status_code == 200
     assert status_response.json["initialized"] is True
     assert status_response.json["model_id"] == "stub-model"
+    assert status_response.json["skill_count"] == 2
+    assert status_response.json["transport"]["mode"] == "socketio"
 
     assert health_response.status_code == 200
     assert health_response.json["status"] == "healthy"
     assert health_response.json["agent_status"]["model_id"] == "stub-model"
+    assert health_response.json["skill_count"] == 2
+    assert health_response.json["transport"]["mode"] == "socketio"
     assert health_response.headers["X-Content-Type-Options"] == "nosniff"
     assert health_response.headers["X-Frame-Options"] == "SAMEORIGIN"
     assert "default-src 'self'" in health_response.headers["Content-Security-Policy"]
@@ -194,11 +249,72 @@ def test_gui_help_and_config_endpoints(gui_client) -> None:
     config_response = gui_client.get("/api/config", headers={"X-API-Key": "test-key"})
 
     assert help_response.status_code == 200
-    assert set(help_response.json.keys()) == {"ai_conversations", "tools", "settings"}
+    assert set(help_response.json.keys()) == {"ai_conversations", "tools", "settings", "skills"}
 
     assert config_response.status_code == 200
     assert config_response.json["project_root"] == "/tmp/replit"
     assert config_response.json["model_id"] == "stub-model"
+
+
+def test_gui_index_exposes_http_fallback_mode(gui_client, gui_app_module, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VERCEL", "1")
+
+    response = gui_client.get("/")
+    status_response = gui_client.get("/api/status")
+
+    assert response.status_code == 200
+    assert 'data-realtime-enabled="false"' in response.get_data(as_text=True)
+    assert status_response.json["transport"]["mode"] == "http-fallback"
+
+
+def test_gui_http_fallback_endpoints(gui_client, gui_app_module) -> None:
+    chat_response = gui_client.post(
+        "/api/chat",
+        json={"message": "hello from http", "session_id": "session-http"},
+        headers={"X-API-Key": "test-key"},
+    )
+    tool_response = gui_client.post(
+        "/api/tools/execute",
+        json={"tool": "shell_execute", "args": {"command": "pwd"}},
+        headers={"X-API-Key": "test-key"},
+    )
+    backup_response = gui_client.post("/api/backup", headers={"X-API-Key": "test-key"})
+    clear_response = gui_client.post(
+        "/api/history/clear",
+        json={"session_id": "session-http"},
+        headers={"X-API-Key": "test-key"},
+    )
+
+    assert chat_response.status_code == 200
+    assert chat_response.json["response"] == "stub:hello from http"
+    assert gui_app_module.app_state.agent.calls[-1] == ("hello from http", "session-http")
+
+    assert tool_response.status_code == 200
+    assert tool_response.json["tool"] == "shell_execute"
+    assert gui_app_module.app_state.agent.dispatched_tools[-1] == ("shell_execute", {"command": "pwd"})
+
+    assert backup_response.status_code == 200
+    assert backup_response.json["success"] is True
+
+    assert clear_response.status_code == 200
+    assert gui_app_module.app_state.agent.cleared_sessions[-1] == "session-http"
+
+
+def test_gui_skills_endpoints(gui_client, gui_app_module) -> None:
+    skills_response = gui_client.get("/api/skills")
+    reload_response = gui_client.post("/api/skills/reload", headers={"X-API-Key": "test-key"})
+
+    assert skills_response.status_code == 200
+    assert skills_response.json["count"] == 2
+    assert skills_response.json["tool_count"] == 1
+    first_skill = skills_response.json["skills"][0]
+    assert "manifest_path" not in first_skill
+    assert "root_path" not in first_skill
+
+    assert reload_response.status_code == 200
+    assert reload_response.json["success"] is True
+    assert reload_response.json["count"] == 2
+    assert gui_app_module.app_state.agent.reload_count == 1
 
 
 def test_gui_config_requires_api_key(gui_client) -> None:

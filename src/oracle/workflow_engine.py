@@ -5,15 +5,17 @@ Oracle Agent Workflow Engine - Enterprise Automation
 from __future__ import annotations
 
 import asyncio
-import subprocess
+import os
+import subprocess  # nosec B404 - explicit workflow shell execution remains behind an opt-in gate
 import uuid
 from datetime import datetime
 from enum import Enum
+from shutil import which
 from typing import Any
-from urllib.parse import urlsplit
 
 import requests
 
+from .network_guard import HTTP_REDIRECT_BLOCKED_ERROR, validate_outbound_http_url
 from .safe_expression import evaluate_condition
 
 
@@ -94,10 +96,17 @@ class WorkflowEngine:
     ) -> dict[str, Any]:
         """Execute shell command step."""
         del context
+        if os.environ.get("ORACLE_ENABLE_WORKFLOW_SHELL", "").strip().lower() != "true":
+            raise ValueError("Shell workflow steps are disabled by default")
+
+        shell_executable = which("bash")
+        if not shell_executable:
+            raise RuntimeError("bash executable not found")
+
         command = str(step.get("command", "echo 'Hello World'"))
         result = await asyncio.to_thread(
-            subprocess.run,
-            ["bash", "-lc", command],
+            subprocess.run,  # nosec B603 - explicitly opt-in shell workflow execution
+            [shell_executable, "-lc", command],
             capture_output=True,
             text=True,
             check=False,
@@ -113,10 +122,12 @@ class WorkflowEngine:
         del context
         url = str(step.get("url", "https://httpbin.org/get"))
         method = str(step.get("method", "GET"))
-        parsed = urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("API workflow steps require absolute http(s) URLs")
-        response = await asyncio.to_thread(requests.request, method, url, timeout=15)
+        error = validate_outbound_http_url(url)
+        if error:
+            raise ValueError(error)
+        response = await asyncio.to_thread(requests.request, method, url, timeout=15, allow_redirects=False)
+        if 300 <= response.status_code < 400:
+            raise ValueError(HTTP_REDIRECT_BLOCKED_ERROR)
         data: Any
         try:
             data = response.json()

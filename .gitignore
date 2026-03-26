@@ -45,6 +45,9 @@ ENV/
 # Logs
 *.log
 
+# Test artifacts
+.hypothesis/
+
 # OS
 .DS_Store
 Thumbs.db

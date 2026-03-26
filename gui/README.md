@@ -7,11 +7,12 @@ The GUI is a Flask + Socket.IO wrapper around `OracleAgent`. It provides a brows
 - `gui/launch.py` and `gui/app.py` now use the same port setting: `ORACLE_GUI_PORT`, default `5001`
 - the default GUI bind host is `127.0.0.1`; set `ORACLE_GUI_HOST` explicitly if you need remote access
 - the GUI imports cleanly even when `flask_talisman` or `flask_limiter` are not installed
-- if those optional packages are missing, the app logs warnings and falls back to no-op wrappers, but still applies baseline browser security headers directly
+- if those optional packages are missing, the app falls back to built-in wrappers and still applies baseline browser security headers directly
 - protected config endpoints use `ORACLE_API_KEY`
 - authenticated Socket.IO clients are required when `ORACLE_API_KEY` is set
 - direct browser-triggered tool execution is limited to the GUI tool set: `shell_execute`, `file_system_ops`, `http_fetch`, and `vision_capture`
 - Socket.IO cross-origin access is same-origin by default; set `ORACLE_GUI_CORS_ORIGINS` only when you intentionally need cross-origin browser access
+- on Vercel, the GUI runs in HTTP fallback mode because serverless functions are not used as a realtime Socket.IO transport
 
 ## Launch
 
@@ -49,6 +50,8 @@ Relevant variables:
 - `ORACLE_MAX_TURNS`
 - `ORACLE_SHELL_TIMEOUT`
 - `ORACLE_HTTP_TIMEOUT`
+- `ORACLE_DB_PATH`
+- `ORACLE_GUI_FORCE_HTTP`
 
 The GUI reads `.env` if present and reinitializes the wrapped `OracleAgent` after config updates.
 Protected settings reads/writes and Socket.IO actions require `ORACLE_API_KEY`.
@@ -60,6 +63,10 @@ These routes are covered by `tests/test_http_entrypoints.py`:
 
 - `GET /api/status`
 - `GET /api/health`
+- `POST /api/chat`
+- `POST /api/tools/execute`
+- `POST /api/backup`
+- `POST /api/history/clear`
 - `GET /api/help/features`
 - `GET /api/config` with `X-API-Key`
 - authenticated Socket.IO connect with `auth.apiKey`
@@ -74,5 +81,16 @@ Additional routes in `gui/app.py` include:
 
 - Conversation and backup behavior depend on the wrapped `OracleAgent`
 - file operations still inherit the `ORACLE_PROJECT_ROOT` sandbox
+- on Vercel, SQLite state defaults to `/tmp/oracle_core.db`
 - if GCP credentials are missing, the GUI can still start, but model-backed chat paths will not work
 - assistant markdown is sanitized in the browser before insertion into the DOM
+
+## Vercel
+
+Deploy from the repo root. The current deployment path uses:
+
+- [app.py](../app.py) as the WSGI entrypoint
+- [vercel.json](../vercel.json) for catch-all rewrites and bundle exclusions
+- [requirements.txt](../requirements.txt) for Python dependencies
+
+The browser GUI automatically switches to HTTP mode on Vercel, so chat, direct tool calls, backup, and history clearing continue to work without Socket.IO.

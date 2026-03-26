@@ -35,16 +35,20 @@ import os
 import sys
 import json
 import sqlite3
-import subprocess
+import subprocess  # nosec B404 - intentional process boundary for explicit agent tools
 import logging
-import urllib.parse
 import tempfile
 from pathlib import Path
+from shutil import which
 from typing import Any, Dict, List, cast
 import requests
 from google import genai
 from google.genai import types
 from .gcs_storage import GCSStorageManager
+from .network_guard import (
+    HTTP_REDIRECT_BLOCKED_ERROR,
+    validate_outbound_http_url,
+)
 
 # MCP + Skills imports (Oracle 5.0)
 try:
@@ -104,7 +108,7 @@ class OracleConfig:
         self.max_turns = int(os.environ.get("ORACLE_MAX_TURNS", "20"))
         self.max_active_skills = int(os.environ.get("ORACLE_MAX_ACTIVE_SKILLS", "3"))
         self.enable_skill_context = os.environ.get("ORACLE_ENABLE_SKILL_CONTEXT", "true").lower() == "true"
-        self.db_path = self.project_root / "data" / "oracle_core.db"
+        self.db_path = self._resolve_db_path()
         self.mcp_config_path = self._resolve_project_path(
             os.environ.get("ORACLE_MCP_CONFIG", "config/mcp_servers.yaml")
         )
@@ -125,6 +129,14 @@ class OracleConfig:
         if candidate.is_absolute():
             return candidate.resolve()
         return (self.project_root / candidate).resolve()
+
+    def _resolve_db_path(self) -> Path:
+        db_path_env = os.environ.get("ORACLE_DB_PATH", "").strip()
+        if db_path_env:
+            return self._resolve_project_path(db_path_env)
+        if os.environ.get("VERCEL"):
+            return Path("/tmp/oracle_core.db")
+        return (self.project_root / "data" / "oracle_core.db").resolve()
 
 
 # ---------------------------------------------------------------------------
@@ -256,6 +268,7 @@ class ToolExecutor:
         self.project_root = project_root.resolve()
         self.shell_timeout = shell_timeout
         self.http_timeout = http_timeout
+        self.shell_executable = which("bash")
 
         # Initialize GCS storage if configured
         self.gcs_storage = None
@@ -281,9 +294,12 @@ class ToolExecutor:
         itself, while still allowing full shell syntax within the command string
         passed to bash -c.
         """
+        if not self.shell_executable:
+            return {"success": False, "error": "bash executable not found"}
+
         try:
-            res = subprocess.run(
-                ["bash", "-c", command],
+            res = subprocess.run(  # nosec B603 - command execution is the explicit purpose of this tool
+                [self.shell_executable, "-c", command],
                 capture_output=True,
                 text=True,
                 timeout=self.shell_timeout,
@@ -342,15 +358,19 @@ class ToolExecutor:
 
     def _try_screenshot_backends(self, target: str) -> Dict[str, Any]:
         """Try alternative screenshot backends"""
-        for cmd in [
-            ["gnome-screenshot", "-f", target],
-            ["grim", target],
-            ["scrot", target],
-        ]:
+        for backend, extra_args in (
+            ("gnome-screenshot", ["-f", target]),
+            ("grim", [target]),
+            ("scrot", [target]),
+        ):
+            executable = which(backend)
+            if not executable:
+                continue
             try:
-                res = subprocess.run(cmd, capture_output=True, timeout=15, check=False)
+                cmd = [executable, *extra_args]
+                res = subprocess.run(cmd, capture_output=True, timeout=15, check=False)  # nosec B603
                 if res.returncode == 0:
-                    return {"success": True, "path": target, "method": cmd[0], "reason": "screenshot"}
+                    return {"success": True, "path": target, "method": backend, "reason": "screenshot"}
             except (FileNotFoundError, subprocess.TimeoutExpired):
                 continue
 
@@ -433,9 +453,9 @@ class ToolExecutor:
         and should be implemented as a separate tool or subprocess call.
         """
         try:
-            parsed = urllib.parse.urlsplit(url)
-            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                return {"success": False, "error": "Only absolute http(s) URLs are allowed"}
+            error = validate_outbound_http_url(url)
+            if error:
+                return {"success": False, "error": error}
 
             request_headers = {"User-Agent": "OracleAgent/1.0"}
             if headers:
@@ -446,7 +466,10 @@ class ToolExecutor:
                 url,
                 headers=request_headers,
                 timeout=self.http_timeout,
+                allow_redirects=False,
             )
+            if 300 <= response.status_code < 400:
+                return {"success": False, "status": response.status_code, "error": HTTP_REDIRECT_BLOCKED_ERROR}
             response.raise_for_status()
             body = response.text
             cap = 8192
@@ -617,6 +640,18 @@ class OracleAgent:
             return self.tools.gcs_storage.backup_database(str(self.cfg.db_path))
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def get_skill_catalog(self) -> List[Dict[str, Any]]:
+        """Return the current local skill catalog, if available."""
+        if not self._tool_registry:
+            return []
+        return self._tool_registry.get_skill_catalog()
+
+    def reload_skills(self) -> List[Dict[str, Any]]:
+        """Reload local skills without reinitializing the full agent."""
+        if not self._tool_registry:
+            return []
+        return self._tool_registry.reload_skills()
 
     # ── Generation config ─────────────────────────────────────────────────
 

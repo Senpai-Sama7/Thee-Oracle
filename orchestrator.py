@@ -263,10 +263,14 @@ class ResultStore:
     def get_many(self, task_ids: Sequence[str]) -> dict[str, dict[str, Any]]:
         if not task_ids:
             return {}
-        placeholders = ",".join("?" * len(task_ids))
+        task_ids_json = json.dumps(list(task_ids))
         rows = self._conn.execute(
-            f"SELECT task_id, result_json FROM task_results WHERE task_id IN ({placeholders})",
-            list(task_ids),
+            """
+            SELECT task_id, result_json
+            FROM task_results
+            WHERE task_id IN (SELECT value FROM json_each(?))
+            """,
+            (task_ids_json,),
         ).fetchall()
         return {row[0]: json.loads(row[1]) for row in rows}
 
@@ -713,8 +717,9 @@ class CircuitBreakerStore:
         # Add updated_at to existing tables that predate this schema version
         try:
             self._conn.execute("ALTER TABLE circuit_breakers ADD COLUMN updated_at REAL NOT NULL DEFAULT 0")
-        except Exception:
-            pass  # column already exists
+        except sqlite3.OperationalError as err:
+            if "duplicate column name" not in str(err).lower():
+                raise
         self._conn.commit()
 
     def save(self, cb: Any) -> None:

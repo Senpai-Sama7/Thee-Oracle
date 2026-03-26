@@ -46,6 +46,18 @@ def test_oracle_config_defaults_to_repo_root(monkeypatch) -> None:
     assert config.enable_skill_context is True
 
 
+def test_oracle_config_uses_tmp_db_on_vercel(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("GCP_PROJECT_ID", "test-project")
+    monkeypatch.setenv("ORACLE_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("ORACLE_DB_PATH", raising=False)
+
+    config = OracleConfig()
+
+    assert config.project_root == tmp_path.resolve()
+    assert config.db_path == Path("/tmp/oracle_core.db")
+
+
 def test_send_email_requires_rabbitmq_url(monkeypatch) -> None:
     monkeypatch.delenv("RABBITMQ_URL", raising=False)
 

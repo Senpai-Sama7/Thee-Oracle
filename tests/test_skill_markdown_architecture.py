@@ -250,6 +250,54 @@ Use this for review work.
     assert "## review-skill" in context
 
 
+def test_skill_loader_reload_tears_down_without_runtime_warning(
+    tmp_path: Path, recwarn: pytest.WarningsRecorder
+) -> None:
+    skill_dir = tmp_path / "reloadable-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        """---
+name: reloadable-skill
+description: Skill used to verify clean reload behavior.
+entrypoint: skill.py
+---
+
+# Reloadable Skill
+""",
+        encoding="utf-8",
+    )
+    (skill_dir / "skill.py").write_text(
+        """
+teardown_calls = 0
+
+async def teardown():
+    global teardown_calls
+    teardown_calls += 1
+
+def ping():
+    return {"success": True}
+
+TOOLS = [
+    {
+        "name": "ping",
+        "description": "Return a success payload.",
+        "parameters": {},
+        "handler": ping,
+    }
+]
+""",
+        encoding="utf-8",
+    )
+
+    loader = SkillLoader(str(tmp_path))
+    loader.load_all()
+    loader.reload()
+
+    runtime_warnings = [warning for warning in recwarn if warning.category is RuntimeWarning]
+    assert runtime_warnings == []
+    assert "reloadable-skill" in loader.skills
+
+
 def test_oracle_agent_builds_skill_system_instruction() -> None:
     agent = OracleAgent.__new__(OracleAgent)
     agent.cfg = cast(Any, SimpleNamespace(enable_skill_context=True, max_active_skills=2))

@@ -76,3 +76,26 @@ def test_circuit_breaker_save_upsert(memory_db: sqlite3.Connection) -> None:
     loaded = store.load_all()
     assert loaded["api"].state == CircuitBreakerState.OPEN
     assert loaded["api"].consecutive_failures == 10
+
+
+def test_circuit_breaker_store_handles_existing_updated_at_column(memory_db: sqlite3.Connection) -> None:
+    memory_db.execute(
+        """
+        CREATE TABLE circuit_breakers (
+            task_type TEXT PRIMARY KEY,
+            state TEXT NOT NULL,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
+            probe_successes INTEGER NOT NULL DEFAULT 0,
+            tripped_at REAL,
+            last_success_at REAL,
+            updated_at REAL NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+    store = CircuitBreakerStore(memory_db)
+
+    cur = memory_db.execute("PRAGMA table_info(circuit_breakers)")
+    columns = [row[1] for row in cur.fetchall()]
+    assert columns.count("updated_at") == 1
+    assert isinstance(store, CircuitBreakerStore)

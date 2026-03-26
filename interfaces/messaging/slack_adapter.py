@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from datetime import datetime
 from typing import Any
 from slack_bolt.async_app import AsyncApp
 
 from src.oracle.interface_adapter import InterfaceBus, InboundMessage, OutboundMessage
 from src.oracle.model_router import StreamChunk
+
+log = logging.getLogger(__name__)
 
 
 class SlackAdapter:
@@ -104,9 +107,8 @@ class SlackAdapter:
                 if new_text != current_text and new_text.strip():
                     try:
                         await self.app.client.chat_update(channel=channel_id, ts=ts, text=new_text)
-                    except Exception:
-                        # Ignore rate limit errors for simplicity
-                        pass
+                    except Exception as err:
+                        log.warning("Slack streaming update failed for session %s: %s", session_id, err)
 
                 if chunk.is_final:
                     del self._streaming_messages[session_id]

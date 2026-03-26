@@ -223,6 +223,25 @@ class ToolRegistry:
             return []
         return self.skill_loader.get_catalog()
 
+    def reload_skills(self) -> List[Dict[str, Any]]:
+        """Reload local skills and refresh exposed declarations."""
+        if not self.skill_loader:
+            self._skill_handlers = {}
+            self._skill_declarations = []
+            return []
+
+        builtin_names = cast(List[str], [d.name for d in self._builtin_declarations if d.name])
+        self.skill_loader.register_builtin_tools(builtin_names)
+        skill_tools = self.skill_loader.reload()
+        self._skill_handlers = skill_tools
+        self._skill_declarations = self._build_skill_declarations(skill_tools)
+        logger.info(
+            "ToolRegistry skill reload complete: %d skills, %d tools",
+            len(self.get_skill_catalog()),
+            len(skill_tools),
+        )
+        return self.get_skill_catalog()
+
     def build_skill_prompt_context(self, prompt: str, max_skills: int = 3) -> str:
         """Build prompt-time skill context for the current request."""
         if not self.skill_loader:

@@ -58,6 +58,7 @@ class Plugin:
 class PluginManager:
     def __init__(self, plugin_dir: str = "plugins") -> None:
         self.plugin_dir = Path(plugin_dir)
+        self.plugin_dir_resolved = self.plugin_dir.resolve()
         self.plugins: dict[str, Plugin] = {}
         self.plugin_dir.mkdir(exist_ok=True)
 
@@ -73,8 +74,13 @@ class PluginManager:
     def load_plugin(self, plugin_id: str) -> bool:
         """Load a plugin."""
         try:
-            plugin_file = self.plugin_dir / f"{plugin_id}.py"
-            if not plugin_file.exists():
+            if Path(plugin_id).name != plugin_id or plugin_id in {".", ".."}:
+                return False
+
+            plugin_file = (self.plugin_dir / f"{plugin_id}.py").resolve()
+            if self.plugin_dir_resolved not in plugin_file.parents:
+                return False
+            if not plugin_file.exists() or not plugin_file.is_file():
                 return False
 
             spec = importlib.util.spec_from_file_location(plugin_id, plugin_file)

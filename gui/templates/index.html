@@ -14,7 +14,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.4/purify.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 </head>
-<body>
+<body data-realtime-enabled="{{ 'true' if realtime_enabled else 'false' }}" data-transport-mode="{{ transport_mode }}">
     <div class="noise-layer" aria-hidden="true"></div>
     <div class="halo halo-one" aria-hidden="true"></div>
     <div class="halo halo-two" aria-hidden="true"></div>
@@ -47,6 +47,10 @@
                         <strong id="config-model">-</strong>
                     </div>
                     <div class="mini-metric">
+                        <span>Skills</span>
+                        <strong id="config-skills">-</strong>
+                    </div>
+                    <div class="mini-metric">
                         <span>Backups</span>
                         <strong id="config-gcs">-</strong>
                     </div>
@@ -73,6 +77,10 @@
                 <button class="nav-pill" data-view="analytics" type="button">
                     <span>Analytics</span>
                     <small>Behavior patterns</small>
+                </button>
+                <button class="nav-pill" data-view="skills" type="button">
+                    <span>Skills</span>
+                    <small>Capability fabric</small>
                 </button>
                 <button class="nav-pill" data-view="settings" type="button">
                     <span>Settings</span>
@@ -109,16 +117,16 @@
             </section>
 
             <div class="rail-footer">
-                <a href="http://localhost:8080/health" target="_blank" rel="noopener noreferrer">Health</a>
-                <a href="http://localhost:8080/metrics" target="_blank" rel="noopener noreferrer">Metrics</a>
+                <a href="{{ url_for('health_check') }}" target="_blank" rel="noopener noreferrer">Health</a>
+                <a href="{{ url_for('get_status') }}" target="_blank" rel="noopener noreferrer">Status</a>
             </div>
         </aside>
 
         <main class="workspace" role="main">
             <header class="topbar">
                 <div class="topbar-copy">
-                    <p class="eyebrow">Autonomous systems console</p>
-                    <h2>Mission-grade orchestration with a human-friendly surface.</h2>
+                    <p class="eyebrow">Autonomous engineering cockpit</p>
+                    <h2>Run the agent like a premium product surface, not a terminal hiding in a browser tab.</h2>
                 </div>
                 <div class="topbar-actions">
                     <button class="command-button" id="command-palette-trigger" type="button">Command Palette</button>
@@ -134,6 +142,11 @@
                     <p class="eyebrow">Session vector</p>
                     <h3 id="session-title">default</h3>
                     <p id="hero-subtitle">Oracle is ready to reason, dispatch tools, and preserve the thread.</p>
+                    <div class="hero-tags">
+                        <span class="hero-tag">Realtime telemetry</span>
+                        <span class="hero-tag">Skill-aware prompting</span>
+                        <span class="hero-tag">Tool-governed execution</span>
+                    </div>
                 </div>
                 <div class="hero-stats">
                     <div class="hero-stat">
@@ -145,10 +158,37 @@
                         <strong id="hero-tool-count">0</strong>
                     </div>
                     <div class="hero-stat">
+                        <span>Skills</span>
+                        <strong id="hero-skill-count">0</strong>
+                    </div>
+                    <div class="hero-stat">
                         <span>Response time</span>
                         <strong id="hero-response-time">0ms</strong>
                     </div>
                 </div>
+            </section>
+
+            <section class="mission-ribbon" aria-label="Operational overview">
+                <article class="mission-card">
+                    <span class="mission-card-label">Project locus</span>
+                    <strong id="ribbon-project">Local mode</strong>
+                    <p>Current environment and project boundary reflected from the active runtime.</p>
+                </article>
+                <article class="mission-card">
+                    <span class="mission-card-label">Skill fabric</span>
+                    <strong id="ribbon-skills">0 loaded</strong>
+                    <p>Workspace-local operating procedures selected at prompt time from `SKILL.md` packages.</p>
+                </article>
+                <article class="mission-card">
+                    <span class="mission-card-label">Security posture</span>
+                    <strong id="ribbon-posture">Loopback bound</strong>
+                    <p>GUI auth, socket gating, and tool allowlists define the browser control surface.</p>
+                </article>
+                <article class="mission-card">
+                    <span class="mission-card-label">Session memory</span>
+                    <strong id="ribbon-memory">Ready</strong>
+                    <p>Persistent local sessions, transcript history, and tool traces stay visible in one deck.</p>
+                </article>
             </section>
 
             <div class="workspace-grid">
@@ -176,6 +216,10 @@
                             <button class="prompt-card" data-prompt="Inspect the repo and suggest the next highest-value engineering task." type="button">
                                 <span class="prompt-title">Find the next move</span>
                                 <span class="prompt-copy">Prioritize the best engineering step.</span>
+                            </button>
+                            <button class="prompt-card" data-prompt="Select the most relevant local skills for this repo task and explain why they apply." type="button">
+                                <span class="prompt-title">Route by skill</span>
+                                <span class="prompt-copy">Surface the best `SKILL.md` operating procedures for the work.</span>
                             </button>
                         </div>
 
@@ -340,6 +384,54 @@
                         </div>
                     </div>
 
+                    <div class="view-stage" id="skills-view">
+                        <div class="panel-header">
+                            <div>
+                                <p class="panel-kicker">Capability fabric</p>
+                                <h3>Local skills, triggers, and operating procedures</h3>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-button" id="btn-refresh-skills" type="button">Refresh catalog</button>
+                                <button class="ghost-button" id="btn-reload-skills" type="button">Reload skills</button>
+                            </div>
+                        </div>
+                        <div class="skills-overview-grid">
+                            <section class="surface-card spotlight-card">
+                                <div class="surface-head">
+                                    <h4>Skill summary</h4>
+                                </div>
+                                <div class="spotlight-metrics">
+                                    <div class="spotlight-metric">
+                                        <span>Discovered skills</span>
+                                        <strong id="skills-summary-count">0</strong>
+                                    </div>
+                                    <div class="spotlight-metric">
+                                        <span>Tool-backed skills</span>
+                                        <strong id="skills-summary-tools">0</strong>
+                                    </div>
+                                    <div class="spotlight-metric">
+                                        <span>Trigger phrases</span>
+                                        <strong id="skills-summary-triggers">0</strong>
+                                    </div>
+                                </div>
+                                <p class="spotlight-copy" id="skills-summary-copy">
+                                    Skills extend the agent with repository-local operating procedures and optional tool entrypoints.
+                                </p>
+                            </section>
+                            <section class="surface-card spotlight-card">
+                                <div class="surface-head">
+                                    <h4>How to use them</h4>
+                                </div>
+                                <ul class="spotlight-list">
+                                    <li>Let the router match task intent to `SKILL.md` descriptions and trigger phrases.</li>
+                                    <li>Open a skill card to inspect supported tools, references, and supporting files.</li>
+                                    <li>Reload the catalog after editing skill packages so prompt-time selection stays current.</li>
+                                </ul>
+                            </section>
+                        </div>
+                        <div class="skills-grid" id="skills-grid"></div>
+                    </div>
+
                     <div class="view-stage" id="settings-view">
                         <div class="panel-header">
                             <div>
@@ -429,6 +521,7 @@
                             <div class="telemetry-item"><span>Connection</span><strong id="status-text">-</strong></div>
                             <div class="telemetry-item"><span>Project</span><strong id="telemetry-project">-</strong></div>
                             <div class="telemetry-item"><span>Model</span><strong id="telemetry-model">-</strong></div>
+                            <div class="telemetry-item"><span>Skills</span><strong id="telemetry-skills">-</strong></div>
                             <div class="telemetry-item"><span>Timestamp</span><strong id="telemetry-time">-</strong></div>
                         </div>
                     </section>
